@@ -79,7 +79,7 @@ def read_keypad():
             # Detect falling edge (button press)
             if last_states[pin] == GPIO.HIGH and current_state == GPIO.LOW:
                 key = KEYPAD_KEYS[i]
-                print(f"\n[Keypad] Key '{key}' pressed")
+                print(f"\n[Keypad] Button pressed: GPIO{pin} -> Key '{key}'")
                 
                 # Add to queue for main loop to process
                 keypad_input_queue.append(key)
@@ -166,13 +166,26 @@ def main():
     keyboard_thread = threading.Thread(target=keyboard_input_thread, daemon=True)
     keyboard_thread.start()
     
-    print("--- System Ready ---")
-    print("Keyboard (SSH): Type 1, 2, q, or 4 and press Enter")
+    print("="*60)
+    print("  ILLUMINATE - AI Vision Assistant")
+    print("="*60)
+    print("\nAvailable Commands:")
+    print("  [1] - Capture Image & Get AI Description")
+    print("        (Takes a photo and describes what it sees)")
+    print("  [2] - Voice Assistant")
+    print("        (Speak your question and get an AI response)")
+    print("  [q] - Quit Program")
+    print("  [4] - Unassigned (available for future features)")
+    print("\nInput Methods:")
     if GPIO_AVAILABLE:
-        print("Keypad: GPIO23 (1), GPIO24 (2), GPIO25 (q), GPIO8 (4)")
+        print("  • Physical Keypad: GPIO pins (buttons 1, 2, q, 4)")
+        print("  • Keyboard: Type command and press Enter")
     else:
-        print("Keypad: DISABLED (test mode - use keyboard only)")
-    print("\nWaiting for input...")
+        print("  • Keyboard Only: Type command and press Enter")
+        print("  • (GPIO disabled - not on Raspberry Pi)")
+    print("\n" + "-"*60)
+    print("System Ready - Waiting for input...")
+    print("-"*60 + "\n")
     
     try:
         while not quit_flag:
