@@ -120,6 +120,16 @@ else
     exit 1
 fi
 
+# Install RPi.GPIO on Linux (Raspberry Pi)
+if [ "$MACHINE" = "Linux" ]; then
+    print_info "Installing RPi.GPIO for Raspberry Pi..."
+    if python3 -m pip install RPi.GPIO --quiet; then
+        print_success "RPi.GPIO installed"
+    else
+        print_error "Failed to install RPi.GPIO (may not be on Raspberry Pi)"
+    fi
+fi
+
 # Verify key modules
 print_header "Verifying Installation"
 

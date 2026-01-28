@@ -15,5 +15,6 @@ pyaudio>=0.2.13
 # Text-to-Speech (for macOS/Windows)
 pyttsx3>=2.90
 
-# GPIO for Raspberry Pi (conditional - will fail gracefully on other platforms)
-RPi.GPIO>=0.7.1; platform_machine == "armv7l" or platform_machine == "aarch64"
+# GPIO for Raspberry Pi
+# Install manually on Pi: pip install RPi.GPIO
+# RPi.GPIO>=0.7.1
