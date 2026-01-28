@@ -1,0 +1,19 @@
+# Illuminate - Python Dependencies
+# Compatible with Python 3.8+
+
+# Core OpenAI and API
+openai>=1.0.0
+python-dotenv>=1.0.0
+
+# Computer Vision
+opencv-python>=4.8.0
+
+# Speech Recognition and Audio
+SpeechRecognition>=3.10.0
+pyaudio>=0.2.13
+
+# Text-to-Speech (for macOS/Windows)
+pyttsx3>=2.90
+
+# GPIO for Raspberry Pi (conditional - will fail gracefully on other platforms)
+RPi.GPIO>=0.7.1; platform_machine == "armv7l" or platform_machine == "aarch64"
