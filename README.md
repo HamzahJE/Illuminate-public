@@ -190,22 +190,63 @@ pip install -r requirements.txt
 ## 🔧 GPIO Setup (Raspberry Pi Only)
 
 ### Pin Mapping
-- **[2]** - Voice assistant (ask a question via microphone)
-- **[q]** - Quit program
-- **[4]** - Unassigned (available for future features)
 
-### Input Methods
-- **Raspberry Pi:** GPIO buttons or keyboard
-- **Other Systems:** Keyboard only (type number + Enter)
-- SSH access supported for remote keyboard control
+| Button | GPIO Pin | Function |
+|--------|----------|----------|
+| Key 1  | GPIO 23  | Camera + AI Description |
+| Key 2  | GPIO 24  | Voice Assistant |
+| Key Q  | GPIO 25  | Quit Program |
+| Key 4  | GPIO 8   | Unassigned |
 
-### On Mac/Windows (Test Mode)
-When running on development machines:
-```bash
-python3 main.py
+**Wiring:**
+- One side of button → GPIO pin
+- Other side → Ground (GND)
+- Pull-up resistors enabled in software
+- Press = LOW signal (connects to ground)
+
+### Customizing GPIO Pins
+
+To change which GPIO pins are used:
+
+1. Open `modules/hardware.py`
+2. Edit the `PIN_TO_KEY` dictionary (around line 30)
+
+```python
+PIN_TO_KEY = {
+    23: '1',  # Change pin numbers here
+    24: '2',
+    25: 'q',
+    8:  '4',
+}
 ```
 
 ---
+
+## 📁 Project Structure
+
+```
+Illuminate/
+├── main.py                    # Main entry (~90 lines)
+├── modules/
+│   ├── cam.py                 # Camera capture
+│   ├── openai_vision.py       # AI image description
+│   ├── chat.py                # AI Q&A
+│   ├── stt_mic.py            # Speech-to-text
+│   ├── tts.py                # Text-to-speech
+│   ├── hardware.py           # GPIO keypad
+│   ├── keyboard_input.py     # Keyboard input
+│   ├── ui.py                 # User interface
+│   └── test_mode.py          # Mock responses
+├── images/                   # Captured photos
+├── requirements.txt          # Dependencies
+└── .env                      # API keys
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Issues
 
 ## 🔌 Hardware Setup (Raspberry Pi)
 
