@@ -22,31 +22,42 @@ git clone <repository-url>
 cd Illuminate
 ```
 
-### Step 2: Run Setup
+### Step 2: Install Dependencies
 
 **Raspberry Pi / Linux:**
 ```bash
-chmod +x setup.sh
-./setup.sh
+# Update system and install Git
+sudo apt update
+sudo apt install -y git python3-venv python3-full python3-pip
+
+# Create and activate virtual environment (recommended)
+python3 -m venv myenv
+source ~/myenv/bin/activate
+
+# Install system packages for audio and speech
+sudo apt install -y espeak espeak-ng libespeak1 portaudio19-dev \
+    python3-dev libasound2-dev alsa-utils ffmpeg flac
+
+# Install Python packages
+pip install
+pip install RPi.GPIO
 ```
 
 **macOS:**
 ```bash
-chmod +x setup.sh
-./setup.sh
+# Install Homebrew first (visit brew.sh)
+# Install portaudio
+brew install portaudio
+
+# Install Python packages
+pip install
 ```
 
 **Windows:**
-```batch
-python setup.py
+```bash
+# Install Python packages
+pip install
 ```
-
-The setup script will:
-- ✓ Check Python version (3.8+ required)
-- ✓ Install system dependencies (espeak, audio libraries)
-- ✓ Install all Python packages from `requirements.txt`
-- ✓ Verify installation
-- ✓ Remind you to configure `.env`
 
 ### Step 3: Configure API Keys
 
@@ -55,13 +66,13 @@ The setup script will:
 cp .env.example .env
 ```
 
-2. Edit `.env` with your credentials:
+2. Edit `.env` with your API credentials:
 ```dotenv
-OPENAI_API_KEY=your_api_key_here
-API_VERSION=2024-02-15-preview
-OPENAI_API_BASE=https://your-resource.openai.azure.com/
-OPENAI_ORGANIZATION=your_organization_id
-MODEL=gpt-4o
+OPENAI_API_KEY=<your_api_key>
+API_VERSION=<api_version>
+OPENAI_API_BASE=<your_api_endpoint>
+OPENAI_ORGANIZATION=<your_org_id>
+MODEL=<model_name>
 IMAGE_PATH=images
 ```
 
@@ -70,65 +81,6 @@ IMAGE_PATH=images
 ### Step 4: Run the Program
 ```bash
 python3 main.py
-```
-
----
-
-## 📋 Manual Setup (Alternative)
-
-If automatic setup doesn't work, follow these steps:
-
-### 1. Install System Dependencies
-
-**Raspberry Pi / Ubuntu / Debian:**
-```bash
-sudo apt-get update
-sudo apt-get install -y espeak alsa-utils portaudio19-dev libespeak1 python3-dev python3-pip
-```
-
-**macOS:**
-```bash
-# Install Homebrew if not already installed
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install portaudio
-brew install portaudio
-```
-
-**Windows:**
-- No additional system packages required
-- Ensure Python 3.8+ is installed from [python.org](https://python.org)
-
-### 2. Install Python Packages
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Install GPIO Support (Raspberry Pi Only)
-```bash
-pip install RPi.GPIO
-```
-
-### 4. Test Individual Components
-
-**Test text-to-speech:**
-```bash
-python3 modules/tts.py
-```
-
-**Test speech recognition:**
-```bash
-python3 modules/stt_mic.py
-```
-
-**Test camera:**
-```bash
-python3 modules/cam.py
-```
-
-**Test OpenAI chat:**
-```bash
-python3 modules/chat.py
 ```
 
 ---
@@ -195,15 +147,11 @@ Connect a 1x4 button keypad to these GPIO pins:
 ```
 Illuminate/
 ├── main.py                 # Main application loop
-├── setup.sh                # Setup script for Linux/Mac
-├── setup.py                # Setup script (cross-platform Python)
-├── setup.bat               # Setup script for Windows
 ├── requirements.txt        # Python dependencies
 ├── .env.example           # Environment variable template
 ├── .env                   # Your API keys (DO NOT COMMIT)
 ├── .gitignore             # Git ignore rules
 ├── README.md              # This file
-├── TESTING.md             # Testing documentation
 └── modules/
     ├── cam.py             # Camera capture module
     ├── openai_vision.py   # Image description via OpenAI Vision
@@ -246,6 +194,29 @@ amixer cset numid=3 2  # Set to HDMI
 # Check volume
 alsamixer  # Use arrow keys to adjust, M to unmute
 ```
+
+### TTS Voice Error (Raspberry Pi - pyttsx3)
+**Problem:** `SetVoiceByName failed with unknown return code -1` or voice errors
+
+**This occurs when using pyttsx3 on Raspberry Pi.** The library defaults to a non-existent voice.
+
+**Solution:**
+```bash
+# Activate your virtual environment
+source ~/myenv/bin/activate
+
+# Edit the pyttsx3 driver file
+vi ~/myenv/lib/python3.13/site-packages/pyttsx3/drivers/espeak.py
+
+# Find the line with: _defaultVoice = "gmw/en"
+# Change it to: _defaultVoice = "en-us"
+# Save and exit
+
+# Or use nano if preferred
+nano ~/myenv/lib/python3.13/site-packages/pyttsx3/drivers/espeak.py
+```
+
+**Note:** The current TTS implementation uses subprocess with espeak directly, which avoids this issue. This is only needed if you modify the code to use pyttsx3 on Linux.
 
 ### Microphone Not Working
 **Problem:** Speech recognition fails or doesn't detect mic
@@ -302,7 +273,7 @@ EOF
 **Solution:**
 ```bash
 # Reinstall all dependencies
-pip install -r requirements.txt
+pip install
 
 # Or install missing package individually
 pip install <package-name>
