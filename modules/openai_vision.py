@@ -2,10 +2,16 @@ from openai import AzureOpenAI
 import os
 from dotenv import load_dotenv
 import base64
+from modules.test_mode import is_test_mode, get_mock_image_description
 
 
 
 def get_image_description():
+    
+    # Return mock response in test mode
+    if is_test_mode():
+        print("[Test Mode] Returning mock AI vision response")
+        return get_mock_image_description()
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     env_path = os.path.join(project_root, '.env')
