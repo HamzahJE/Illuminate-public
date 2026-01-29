@@ -1,27 +1,32 @@
 import threading
 import time
+import sys
+from queue import Queue
+
+# Import AI/Vision modules
 from modules.cam import capture_image
 from modules.openai_vision import get_image_description
 from modules.tts import speak_text
 from modules.stt_mic import listen_from_mic
 from modules.chat import query_openai
 
-# Try to import RPi.GPIO, use mock if not available (for testing on laptop)
+
+# ============================================================================
+# HARDWARE SETUP - GPIO Configuration
+# ============================================================================
+
+# Detect if running on Raspberry Pi with GPIO hardware
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
-    print("[GPIO] Raspberry Pi GPIO detected")
+    print("[Hardware] Raspberry Pi GPIO detected")
 except (ImportError, RuntimeError):
     GPIO_AVAILABLE = False
-    print("[GPIO] Running in TEST MODE (no GPIO hardware)")
-    # Mock GPIO for testing
+    print("[Hardware] Running in SOFTWARE-ONLY mode (no GPIO)")
+    
+    # Mock GPIO for testing on laptop/desktop
     class MockGPIO:
-        BCM = 'BCM'
-        IN = 'IN'
-        HIGH = 1
-        LOW = 0
-        PUD_UP = 'PUD_UP'
-        
+        BCM, IN, HIGH, LOW, PUD_UP = 'BCM', 'IN', 1, 0, 'PUD_UP'
         @staticmethod
         def setmode(mode): pass
         @staticmethod
@@ -32,182 +37,222 @@ except (ImportError, RuntimeError):
         def input(pin): return 1  # Always HIGH (not pressed)
         @staticmethod
         def cleanup(): pass
-    
     GPIO = MockGPIO()
 
-# --- GPIO Setup for 1x4 Keypad ---
-# Keypad configuration: GPIO23, GPIO24, GPIO25, GPIO8
-KEYPAD_PINS = [23, 24, 25, 8]
-KEYPAD_KEYS = ['1', '2', 'q', '4']  # Mapping for the 4 keys
 
-# Global flag for quit signal
-quit_flag = False
-keypad_input_queue = []
+# Hardware Configuration: 1x4 Keypad
+KEYPAD_CONFIG = {
+    23: '1',  # GPIO23 -> Button 1 (Camera + AI Description)
+    24: '2',  # GPIO24 -> Button 2 (Voice Assistant)
+    25: 'q',  # GPIO25 -> Button Q (Quit)
+    8:  '4',  # GPIO8  -> Button 4 (Unassigned)
+}
 
-def setup_gpio():
-    """Initialize GPIO pins for keypad."""
-    if not GPIO_AVAILABLE:
-        print("[GPIO] Skipping GPIO setup (test mode)")
-        return
-    
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setwarnings(False)
-    
-    for pin in KEYPAD_PINS:
-        # Set as input with Pull-Up resistor (button connects to Ground)
-        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    
-    print("[GPIO] Keypad initialized on pins:", KEYPAD_PINS)
 
-def read_keypad():
-    """Continuously monitor keypad for button presses."""
-    global quit_flag, keypad_input_queue
+class HardwareInterface:
+    """Manages GPIO keypad hardware interactions."""
     
-    if not GPIO_AVAILABLE:
-        # In test mode, keypad monitoring is disabled
-        while not quit_flag:
-            time.sleep(1)
-        return
-    
-    # Track last state to detect edges
-    last_states = {pin: GPIO.HIGH for pin in KEYPAD_PINS}
-    
-    while not quit_flag:
-        for i, pin in enumerate(KEYPAD_PINS):
-            current_state = GPIO.input(pin)
-            
-            # Detect falling edge (button press)
-            if last_states[pin] == GPIO.HIGH and current_state == GPIO.LOW:
-                key = KEYPAD_KEYS[i]
-                print(f"\n[Keypad] Button pressed: GPIO{pin} -> Key '{key}'")
-                
-                # Add to queue for main loop to process
-                keypad_input_queue.append(key)
-                
-                # Small delay for debouncing
-                time.sleep(0.3)
-            
-            last_states[pin] = current_state
+    def __init__(self, input_queue):
+        self.input_queue = input_queue
+        self.running = False
         
-        time.sleep(0.05)  # Small delay to reduce CPU usage
+    def setup(self):
+        """Initialize GPIO pins for keypad input."""
+        if not GPIO_AVAILABLE:
+            return
+        
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        
+        # Configure each pin as input with pull-up resistor
+        for pin in KEYPAD_CONFIG.keys():
+            GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        
+        print(f"[Hardware] Keypad initialized: {list(KEYPAD_CONFIG.keys())}")
+    
+    def monitor_loop(self):
+        """Continuously monitor hardware buttons for presses."""
+        if not GPIO_AVAILABLE:
+            # No hardware available, just wait
+            while self.running:
+                time.sleep(1)
+            return
+        
+        # Track button states for edge detection
+        button_states = {pin: GPIO.HIGH for pin in KEYPAD_CONFIG.keys()}
+        
+        while self.running:
+            for pin, key in KEYPAD_CONFIG.items():
+                current = GPIO.input(pin)
+                
+                # Detect button press (falling edge: HIGH -> LOW)
+                if button_states[pin] == GPIO.HIGH and current == GPIO.LOW:
+                    print(f"[Hardware] GPIO{pin} pressed -> '{key}'")
+                    self.input_queue.put(key)
+                    time.sleep(0.3)  # Debounce delay
+                
+                button_states[pin] = current
+            
+            time.sleep(0.05)  # Polling interval
+    
+    def cleanup(self):
+        """Release GPIO resources."""
+        GPIO.cleanup()
 
-# --- Existing Flows ---
 
-def button_1_flow():
-    """Flow 1: Capture and describe image."""
+# ============================================================================
+# SOFTWARE INPUT - Keyboard Interface
+# ============================================================================
+
+class KeyboardInterface:
+    """Manages keyboard input for testing/backup control."""
+    
+    def __init__(self, input_queue):
+        self.input_queue = input_queue
+        self.running = False
+    
+    def monitor_loop(self):
+        """Continuously read keyboard input."""
+        while self.running:
+            try:
+                choice = input("Enter choice: ").strip().lower()
+                if choice:
+                    self.input_queue.put(choice)
+            except (EOFError, KeyboardInterrupt):
+                self.running = False
+                break
+            except Exception as e:
+                if self.running:
+                    print(f"[Keyboard Error] {e}")
+
+
+# ============================================================================
+# APPLICATION LOGIC - Command Handlers
+# ============================================================================
+
+def execute_camera_capture():
+    """Command 1: Capture image and get AI description."""
     try:
-        print("\n[Action] Capturing image and describing...")
+        print("\n[Action] Capturing image...")
         capture_image()
         description = get_image_description()
-        print("Image description:", description)
+        print(f"[AI] {description}")
         speak_text(description)
     except Exception as e:
-        print(f"[Error in Flow 1] {e}")
+        print(f"[Error] Camera/AI failed: {e}")
         speak_text("Sorry, there was an error processing the image.")
 
-def button_2_flow():
-    """Flow 2: Voice interaction."""
+
+def execute_voice_assistant():
+    """Command 2: Listen to microphone and respond."""
     try:
-        print("\n[Action] Listening to microphone...")
+        print("\n[Action] Listening...")
         text = listen_from_mic()
         if text:
-            print("Recognized text:", text)
+            print(f"[You said] {text}")
             response = query_openai(text)
             speak_text(response)
         else:
             print("[Info] No speech detected")
     except Exception as e:
-        print(f"[Error in Flow 2] {e}")
-        speak_text("Sorry, there was an error processing your request.")
+        print(f"[Error] Voice assistant failed: {e}")
+        speak_text("Sorry, I couldn't process your request.")
 
-# --- Main Logic ---
 
-def process_choice(choice):
-    """Process a choice from keyboard or keypad."""
-    if choice == '1':
-        button_1_flow()
-    elif choice == '2':
-        button_2_flow()
-    elif choice == 'q':
-        return True  # Signal to quit
-    elif choice == '4':
-        print("\n[Info] Key 4 pressed - currently unassigned.")
-    else:
-        if choice:  # Ignore empty inputs
-            print("Invalid choice. Use 1, 2, q, or 4.")
-    return False
-
-def keyboard_input_thread():
-    """Thread to handle keyboard input without blocking."""
-    global quit_flag, keypad_input_queue
+def execute_command(command):
+    """Execute the appropriate action for a command."""
+    commands = {
+        '1': execute_camera_capture,
+        '2': execute_voice_assistant,
+        '4': lambda: print("\n[Info] Button 4 - No function assigned yet"),
+    }
     
-    while not quit_flag:
-        try:
-            choice = input("Enter choice: ").strip().lower()
-            if choice:
-                keypad_input_queue.append(choice)
-        except (EOFError, KeyboardInterrupt):
-            quit_flag = True
-            break
-        except Exception as e:
-            if not quit_flag:
-                print(f"[Input Error] {e}")
+    if command in commands:
+        commands[command]()
+    elif command == 'q':
+        return True  # Signal to quit
+    elif command:
+        print(f"[Invalid] Unknown command: '{command}'")
+    
+    return False  # Continue running
+
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+
+def print_startup_banner(has_gpio):
+    """Display welcome screen and instructions."""
+    print("=" * 60)
+    print("  ILLUMINATE - AI Vision Assistant")
+    print("=" * 60)
+    print("\nCommands:")
+    print("  [1] Camera + AI Description")
+    print("  [2] Voice Assistant")
+    print("  [q] Quit")
+    print("  [4] Unassigned")
+    print("\nInput:")
+    if has_gpio:
+        print("  • Hardware Keypad (GPIO buttons)")
+        print("  • Keyboard (type + Enter)")
+    else:
+        print("  • Keyboard Only (type + Enter)")
+    print("\n" + "-" * 60)
+    print("Ready for input...")
+    print("-" * 60 + "\n")
+
 
 def main():
-    global quit_flag, keypad_input_queue
+    """Main application entry point."""
     
-    setup_gpio()
+    # Shared input queue for both hardware and software
+    input_queue = Queue()
     
-    # Start keypad monitoring thread
-    keypad_thread = threading.Thread(target=read_keypad, daemon=True)
-    keypad_thread.start()
+    # Initialize hardware and software interfaces
+    hardware = HardwareInterface(input_queue)
+    keyboard = KeyboardInterface(input_queue)
     
-    # Start keyboard input thread
-    keyboard_thread = threading.Thread(target=keyboard_input_thread, daemon=True)
-    keyboard_thread.start()
+    # Setup hardware
+    hardware.setup()
     
-    print("="*60)
-    print("  ILLUMINATE - AI Vision Assistant")
-    print("="*60)
-    print("\nAvailable Commands:")
-    print("  [1] - Capture Image & Get AI Description")
-    print("        (Takes a photo and describes what it sees)")
-    print("  [2] - Voice Assistant")
-    print("        (Speak your question and get an AI response)")
-    print("  [q] - Quit Program")
-    print("  [4] - Unassigned (available for future features)")
-    print("\nInput Methods:")
-    if GPIO_AVAILABLE:
-        print("  • Physical Keypad: GPIO pins (buttons 1, 2, q, 4)")
-        print("  • Keyboard: Type command and press Enter")
-    else:
-        print("  • Keyboard Only: Type command and press Enter")
-        print("  • (GPIO disabled - not on Raspberry Pi)")
-    print("\n" + "-"*60)
-    print("System Ready - Waiting for input...")
-    print("-"*60 + "\n")
+    # Start input monitoring threads
+    hardware.running = True
+    keyboard.running = True
     
+    hw_thread = threading.Thread(target=hardware.monitor_loop, daemon=True)
+    kb_thread = threading.Thread(target=keyboard.monitor_loop, daemon=True)
+    
+    hw_thread.start()
+    kb_thread.start()
+    
+    # Show welcome screen
+    print_startup_banner(GPIO_AVAILABLE)
+    
+    # Main event loop
     try:
-        while not quit_flag:
-            # Check if there's any input from keypad or keyboard
-            if keypad_input_queue:
-                choice = keypad_input_queue.pop(0)
-                should_quit = process_choice(choice)
+        while True:
+            if not input_queue.empty():
+                command = input_queue.get()
+                should_quit = execute_command(command)
+                
                 if should_quit:
-                    print("\nExiting program...")
-                    quit_flag = True
+                    print("\n[Shutdown] Exiting...")
                     break
             
-            time.sleep(0.1)  # Small delay to reduce CPU usage
+            time.sleep(0.1)  # Reduce CPU usage
     
     except KeyboardInterrupt:
-        print("\n[Interrupt] Shutting down...")
+        print("\n[Shutdown] Interrupted by user")
     
     finally:
-        quit_flag = True
-        time.sleep(0.5)  # Give threads time to exit
-        GPIO.cleanup()
-        print("GPIO Cleaned up.")
+        # Clean shutdown
+        hardware.running = False
+        keyboard.running = False
+        time.sleep(0.5)  # Let threads finish
+        hardware.cleanup()
+        print("[Shutdown] Cleanup complete")
+        print("\033[H\033[J")  # Clear terminal
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
