@@ -18,15 +18,10 @@ def get_image_description():
     if not load_dotenv(env_path):
         raise RuntimeError("Unable to load .env file.")
 
-    image_folder = os.environ.get('IMAGE_PATH')
-    folder = os.path.abspath(os.path.join(project_root, image_folder))
-    image_path = os.path.join(folder, "image.jpg")
+    # Use hardcoded images folder
+    image_path = os.path.join(project_root, 'images', 'image.jpg')
 
-#Sets the current working directory to be the same as the file.
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-
-    # Path of the image to be analyzed.
+    # Path of the image to be analyzed
     imagedata = base64.b64encode(open(image_path, 'rb').read()).decode('ascii')
 
     #Create Azure client

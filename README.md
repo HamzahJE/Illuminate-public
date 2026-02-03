@@ -61,87 +61,6 @@ Once running, use these commands:
 
 ---
 
-## Project Structure
-
-```
-Illuminate/
-├── main.py                    # Main entry point (~90 lines, easy to read)
-├── modules/
-│   ├── cam.py                 # Camera capture
-│   ├── openai_vision.py       # AI image description
-│   ├── chat.py                # AI Q&A chat
-│   ├── stt_mic.py            # Speech-to-text
-│   ├── tts.py                # Text-to-speech (cross-platform)
-│   ├── hardware.py           # GPIO keypad (1x4 buttons)
-│   └── keyboard_input.py     # Keyboard input handler
-├── images/                   # Captured photos
-├── requirements.txt          # Python dependencies
-└── .env                      # API keys (you create this)
-```
-
-**GPIO Pin Mapping (Raspberry Pi):**
-- GPIO 23 → Button 1 (Camera + Description)
-- GPIO 24 → Button 2 (Voice Assistant)
-- GPIO 25 → Button Q (Quit)
-- GPIO 8 → Button 4 (Unassigned)
-
----
-
-## 🚀 Quick Start
-
-### Step 1: Clone Repository
-```bash
-git clone <repository-url>
-cd Illuminate
-```
-
-### Step 2: Install Dependencies
-
-**Raspberry Pi / Linux:**
-```bash
-# System packages
-sudo apt update
-sudo apt install -y git python3-venv python3-full python3-pip \
-    espeak espeak-ng portaudio19-dev python3-dev libasound2-dev
-
-# Virtual environment (recommended)
-python3 -m venv ~/myenv
-source ~/myenv/bin/activate
-
-# Python packages
-pip install -r requirements.txt
-pip install RPi.GPIO  # Only on Raspberry Pi
-```
-
-**macOS:**
-```bash
-# Install portaudio
-brew install portaudio
-
-# Python packages
-pip install -r requirements.txt
-```
-
-**Windows:**
-```bash
-# Python packages
-pip install -r requirements.txt
-```
-
-### Step 3: Configure API Keys
-
-Create a `.env` file in the project root:
-```bash
-OPENAI_API_KEY=your_key_here
-```
-
-**⚠️ Never commit `.env` to Git!**
-
-### Step 4: Run
-```bash
-python3 main.py
-```
-
 ---
 
 ## 📦 Detailed Setup (Platform-Specific)
@@ -187,68 +106,7 @@ pip install -r requirements.txt
 
 ---
 
-## 🔧 GPIO Setup (Raspberry Pi Only)
-
-### Pin Mapping
-
-| Button | GPIO Pin | Function |
-|--------|----------|----------|
-| Key 1  | GPIO 23  | Camera + AI Description |
-| Key 2  | GPIO 24  | Voice Assistant |
-| Key Q  | GPIO 25  | Quit Program |
-| Key 4  | GPIO 8   | Unassigned |
-
-**Wiring:**
-- One side of button → GPIO pin
-- Other side → Ground (GND)
-- Pull-up resistors enabled in software
-- Press = LOW signal (connects to ground)
-
-### Customizing GPIO Pins
-
-To change which GPIO pins are used:
-
-1. Open `modules/hardware.py`
-2. Edit the `PIN_TO_KEY` dictionary (around line 30)
-
-```python
-PIN_TO_KEY = {
-    23: '1',  # Change pin numbers here
-    24: '2',
-    25: 'q',
-    8:  '4',
-}
-```
-
----
-
-## 📁 Project Structure
-
-```
-Illuminate/
-├── main.py                    # Main entry (~90 lines)
-├── modules/
-│   ├── cam.py                 # Camera capture
-│   ├── openai_vision.py       # AI image description
-│   ├── chat.py                # AI Q&A
-│   ├── stt_mic.py            # Speech-to-text
-│   ├── tts.py                # Text-to-speech
-│   ├── hardware.py           # GPIO keypad
-│   ├── keyboard_input.py     # Keyboard input
-│   ├── ui.py                 # User interface
-│   └── test_mode.py          # Mock responses
-├── images/                   # Captured photos
-├── requirements.txt          # Dependencies
-└── .env                      # API keys
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-## 🔌 Hardware Setup (Raspberry Pi)
+## � Troubleshooting
 
 ### GPIO Keypad Wiring
 
@@ -330,41 +188,14 @@ aplay -l
 sudo raspi-config  # → Audio → Force headphone jack
 ```
 
-### pyttsx3 Crash (Python 3.13+)
-Error: "SetVoiceByName failed"?
-
-Edit pyttsx3 voice settings:
-```bash
-nano ~/myenv/lib/python3.13/site-packages/pyttsx3/drivers/espeak.py
-# Line 74: Change "gmw/en" to "en-us"
-```
-
-**Solution:**
-```bash
-# Test espeak directly
-espeak "Hello world"
-
-# If no sound, check audio output device
-amixer cset numid=3 1  # Set to 3.5mm jack
-amixer cset numid=3 2  # Set to HDMI
-
-# Check volume
-alsamixer  # Use arrow keys to adjust, M to unmute
-```
-
-### TTS Voice Error (Raspberry Pi - pyttsx3)
-**Problem:** `SetVoiceByName failed with unknown return code -1` or voice errors
-
 ### Microphone Not Working
 ```bash
 # List microphones
 python3 -c "import speech_recognition as sr; print(sr.Microphone.list_microphone_names())"
 
-# Test recording
-arecord -d 3 test.wav && aplay test.wav
-```
+---
 
-### Camera Not Found
+## 🔌 GPIO Hardware Setup (Raspberry Pi)
 ```bash
 # Check camera devices
 ls -l /dev/video*
