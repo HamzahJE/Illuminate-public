@@ -1,4 +1,5 @@
 import speech_recognition as sr
+from modules.tones import listening_start, listening_end
 
 def listen_from_mic(timeout=5, phrase_time_limit=10) -> str:
     recognizer = sr.Recognizer()
@@ -8,9 +9,11 @@ def listen_from_mic(timeout=5, phrase_time_limit=10) -> str:
         print("Adjusting for ambient noise...")
         recognizer.adjust_for_ambient_noise(source)
 
+        listening_start()  # Play tone to indicate listening started
         print("Listening...")
         # Listen for audio from mic
         audio = recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
+        listening_end()  # Play tone to indicate listening ended
 
     try:
         # Use Google Web Speech API by default (requires internet) can use with pocketsphinx for offline

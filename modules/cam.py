@@ -1,24 +1,18 @@
 import cv2
 import os
 import time
-from dotenv import load_dotenv
 
 def capture_image():
-    # Load .env from project root
+    # Setup images folder
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    env_path = os.path.join(project_root, '.env')
-    if not load_dotenv(env_path):
-        raise RuntimeError("Unable to load .env file.")
-
-    image_folder = os.environ.get('IMAGE_PATH')
-    folder = os.path.abspath(os.path.join(project_root, image_folder))
+    folder = os.path.join(project_root, 'images')
     image_path = os.path.join(folder, "image.jpg")
 
-        # Make sure folder exists
+    # Make sure folder exists
     if not os.path.exists(folder):
         os.makedirs(folder)
 
-        # Clear previous images
+    # Clear previous images
     for filename in os.listdir(folder):
         file_path = os.path.join(folder, filename)
         if os.path.isfile(file_path):
