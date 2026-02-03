@@ -2,6 +2,19 @@ import subprocess
 import platform
 import shutil
 
+# Cache TTS engine to avoid re-initialization delay
+_tts_engine = None
+
+def _get_tts_engine():
+    """Get or create cached TTS engine."""
+    global _tts_engine
+    if _tts_engine is None:
+        import pyttsx3
+        _tts_engine = pyttsx3.init()
+        _tts_engine.setProperty('rate', 150)
+        _tts_engine.setProperty('volume', 1.0)
+    return _tts_engine
+
 def speak_text(text: str):
     """
     Cross-platform TTS:
@@ -19,10 +32,7 @@ def speak_text(text: str):
                 print("[TTS] Error: espeak not installed")
         
         else:  # macOS or Windows - use pyttsx3
-            import pyttsx3
-            engine = pyttsx3.init()
-            engine.setProperty('rate', 150)
-            engine.setProperty('volume', 1.0)
+            engine = _get_tts_engine()
             engine.say(text)
             engine.runAndWait()
 

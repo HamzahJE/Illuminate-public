@@ -1,4 +1,5 @@
 import speech_recognition as sr
+import platform
 from modules.tones import listening_start, listening_end
 
 def listen_from_mic(timeout=5, phrase_time_limit=10) -> str:
@@ -6,8 +7,9 @@ def listen_from_mic(timeout=5, phrase_time_limit=10) -> str:
     mic = sr.Microphone()
 
     with mic as source:
-        print("Adjusting for ambient noise...")
-        recognizer.adjust_for_ambient_noise(source)
+        # Pi needs longer calibration due to hardware differences
+        duration = 0.8 if platform.system() == "Linux" else 0.3
+        recognizer.adjust_for_ambient_noise(source, duration=duration)
 
         listening_start()  # Play tone to indicate listening started
         print("Listening...")
