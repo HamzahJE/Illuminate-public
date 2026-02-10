@@ -122,37 +122,27 @@ class PiperTTS:
             "-q" # Quiet mode (suppress logs)
         ]
 
-        piper_process = None
-        aplay_process = None
-
         try:
-            # 3. Start the Piper process (text → raw audio)
+            # 3. Start Processes with a Pipe
             piper_process = subprocess.Popen(
                 piper_cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL  # Suppress ONNX runtime warnings
+                stderr=subprocess.DEVNULL # Suppress ONNX warnings
             )
 
-            # 4. Start the Aplay process (raw audio → speaker)
-            #    stderr=DEVNULL, not PIPE — reading PIPE is required to avoid
-            #    deadlock, but we don't need aplay's warnings (already in -q mode)
             aplay_process = subprocess.Popen(
                 aplay_cmd,
                 stdin=piper_process.stdout,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.PIPE
             )
 
-            # 5. Close our copy of piper's stdout so aplay is the sole reader.
-            #    This lets SIGPIPE/EOF propagate correctly when piper finishes.
-            piper_process.stdout.close()
-
-            # 6. Feed the text to piper, then close stdin to signal "done"
+            # 4. Feed the text
             piper_process.stdin.write(text.encode('utf-8'))
             piper_process.stdin.close()
 
-            # 7. Wait for playback to finish
+            # 5. Wait for audio to complete
             aplay_process.wait()
             piper_process.wait()
 
@@ -160,12 +150,6 @@ class PiperTTS:
             print("[Error] Audio pipe broke. Is the device disconnected?")
         except Exception as e:
             print(f"[Error] TTS Failed: {e}")
-        finally:
-            # Always clean up — never leave zombie processes
-            for proc in (piper_process, aplay_process):
-                if proc is not None and proc.poll() is None:
-                    proc.kill()
-                    proc.wait()
 
 # --- Usage Example ---
 if __name__ == "__main__":
