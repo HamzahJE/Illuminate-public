@@ -2,7 +2,6 @@ import subprocess
 import platform
 import shutil
 import os
-from modules.test_mode import is_test_mode
 
 # Cache TTS engines to avoid re-initialization delay
 _tts_engine = None
@@ -39,15 +38,9 @@ def speak_text(text: str):
     Cross-platform TTS optimized for Raspberry Pi:
     - Linux (Pi): Prefers Piper TTS (high quality, low latency), falls back to espeak
     - macOS/Windows: Uses pyttsx3 library for native integration
-    - Test Mode: Prints text instead of speaking
     
-    Pi optimization: Piper engine cached on first call for instant subsequent responses
+    Always speaks - test mode only skips API calls, not audio output.
     """
-    # In test mode, just print what would be spoken
-    if is_test_mode():
-        print(f"[TTS Test Mode] Would speak: '{text}'")
-        return
-    
     system_os = platform.system()
     
     try:

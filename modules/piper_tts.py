@@ -2,7 +2,6 @@ import subprocess
 import re
 import os
 import sys
-from modules.test_mode import is_test_mode
 
 class PiperTTS:
     """
@@ -100,14 +99,8 @@ class PiperTTS:
     def speak(self, text):
         """
         Synthesizes and streams speech to the USB headset with near-zero latency.
-        In test mode, prints instead of speaking.
         """
         if not text:
-            return
-        
-        # In test mode, don't actually speak
-        if is_test_mode():
-            print(f"[Piper Test Mode] Would speak: '{text}'")
             return
 
         # 1. Prepare the Piper Command (Producer)
