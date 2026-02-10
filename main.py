@@ -12,7 +12,7 @@ from queue import Queue
 # AI/Vision modules
 from modules.cam import capture_image
 from modules.openai_vision import get_image_description
-from modules.tts import speak_text
+from modules.tts import speak_text, warm_up
 from modules.stt_mic import listen_from_mic
 from modules.chat import query_openai
 
@@ -142,6 +142,11 @@ def main():
     input_queue = Queue()
     print_test_mode_banner()
     print_banner(has_gpio_hardware())
+
+    # Pre-load the TTS engine while the user reads the banner
+    # so the first speak_text() call is instant, not delayed
+    warm_up()
+
     gpio_keypad, keyboard = setup_input_handlers(input_queue)
     run_command_loop(input_queue, gpio_keypad, keyboard)
 

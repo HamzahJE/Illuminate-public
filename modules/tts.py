@@ -77,6 +77,15 @@ def speak_text(text: str):
         print(f"[TTS] Error: {e}")
 
 
+def warm_up():
+    """Pre-initialize the TTS engine so the first speak_text() call is instant.
+    Call this once at startup (from main.py) while the banner is printing."""
+    if platform.system() == "Linux":
+        _get_piper_engine()
+    else:
+        _get_pyttsx3_engine()
+
+
 if __name__ == "__main__":
     test_text = "Hello, this is a test of text to speech."
     print("[Test] Testing TTS module...")
