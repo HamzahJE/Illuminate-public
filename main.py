@@ -3,7 +3,7 @@ import time
 import sys
 import argparse
 import os
-from queue import Queue
+from queue import Queue, Empty
 from dotenv import load_dotenv
 
 # Load environment variables once at startup
@@ -104,25 +104,26 @@ def run_command_loop(input_queue, gpio_keypad, keyboard):
     """Main event loop - process commands from queue."""
     try:
         while True:
-            if not input_queue.empty():
-                command = input_queue.get()
-                
-                # Clear any additional inputs that arrived while we process this command
-                while not input_queue.empty():
-                    input_queue.get()  # Discard queued inputs
-                
-                should_quit = process_command(command)
-                
-                if should_quit:
-                    print("\n[Shutdown] Exiting...")
-                    gpio_keypad.running = False
-                    keyboard.running = False
-                    gpio_keypad.cleanup()
-                    print("[Shutdown] Complete")
-                    print("\033[H\033[J")  # Clear terminal
-                    sys.exit(0)
-            
-            time.sleep(0.1)
+            try:
+                # Block until a command arrives (or timeout) — no CPU wasted
+                command = input_queue.get(timeout=0.1)
+            except Empty:
+                continue  # No input yet, loop back
+
+            # Clear any additional inputs that arrived while we process this command
+            while not input_queue.empty():
+                input_queue.get()  # Discard queued inputs
+
+            should_quit = process_command(command)
+
+            if should_quit:
+                print("\n[Shutdown] Exiting...")
+                gpio_keypad.running = False
+                keyboard.running = False
+                gpio_keypad.cleanup()
+                print("[Shutdown] Complete")
+                print("\033[H\033[J")  # Clear terminal
+                sys.exit(0)
     
     except KeyboardInterrupt:
         print("\n[Shutdown] Interrupted")
