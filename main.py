@@ -44,7 +44,6 @@ def capture_and_describe():
 def voice_interaction():
     """Command 2: Listen and respond to voice question."""
     try:
-        speak_text("Listening.")
         print("\n[Action] Listening...")
         text = listen_from_mic()
         if text:
