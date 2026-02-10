@@ -44,6 +44,7 @@ def capture_and_describe():
 def voice_interaction():
     """Command 2: Listen and respond to voice question."""
     try:
+        speak_text("Listening.")
         print("\n[Action] Listening...")
         text = listen_from_mic()
         if text:
@@ -52,6 +53,7 @@ def voice_interaction():
             speak_text(response)
         else:
             print("[Info] No speech detected")
+            speak_text("I didn't catch that.")
     except Exception as e:
         print(f"[Error] Voice assistant failed: {e}")
         speak_text("Sorry, I couldn't process your request.")

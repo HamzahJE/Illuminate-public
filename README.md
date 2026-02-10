@@ -15,10 +15,16 @@ cd Illuminate
 pip install -r requirements.txt
 ```
 
-### 2. Configure API Key
-Create `.env` file:
+### 2. Configure API Keys
+Copy the example and fill in your Azure OpenAI credentials:
 ```bash
-OPENAI_API_KEY=your_openai_key_here
+cp .env.example .env
+# Edit .env with your values:
+#   OPENAI_API_KEY=your_key
+#   API_VERSION=your_api_version
+#   OPENAI_API_BASE=your_endpoint
+#   OPENAI_ORGANIZATION=your_org_id
+#   MODEL=your_model_name
 ```
 
 ### 3. Run the App
@@ -38,6 +44,19 @@ python3 main.py --test
 - Developing without API costs
 - Demo/presentation without internet
 
+**What test mode does:**
+- ✅ Skips all Azure OpenAI API calls (no costs)
+- ✅ Returns mock vision descriptions and chat responses
+- ✅ TTS still speaks (so you can test audio hardware)
+- ✅ Camera still captures (so you can test the camera)
+- ✅ Microphone still listens (so you can test the mic)
+
+**What test mode does NOT skip:**
+- Audio output (Piper/pyttsx3/espeak)
+- Camera capture
+- Microphone input
+- GPIO/keyboard input
+
 ---
 
 ## 🎮 Available Commands
@@ -47,6 +66,17 @@ Once running, use these commands:
 - **[2]** - Voice assistant (ask a question)
 - **[q]** - Quit program
 - **[4]** - Unassigned (available for custom features)
+
+### Voice Assistant UX (Button 2)
+The system uses **spoken cues** so the user always knows what's happening:
+1. 🔊 **"Listening."** — tells the user to start speaking
+2. 🔔 **Tone** — confirms microphone is active
+3. *(user speaks, silence auto-detects end of speech)*
+4. 🔔 **Tone** — confirms recording stopped
+5. 🔊 **"Processing."** — tells the user to wait
+6. 🔊 **AI response** — the answer is spoken aloud
+
+If no speech is detected: **"I didn't catch that."**
 
 ---
 
@@ -59,12 +89,96 @@ Once running, use these commands:
 - 🤖 Modular, easy-to-read code structure
 - 🔄 Works on: Raspberry Pi, Mac, Windows, Linux
 - 🎯 Intelligent audio device detection for USB headsets
+- 🔔 Audio cues for listening state (user always knows when to speak)
 
 ---
 
+## 🔀 System Flow
+
+### Overall Architecture
+```
+┌───────────────────────────────────────────────────────────┐
+│                        main.py                            │
+│                                                           │
+│  ┌──────────────┐                  ┌──────────────────┐   │
+│  │ GPIO Keypad  │───┐          ┌───│ Keyboard Input   │   │
+│  │ (Pi only)    │   │          │   │                  │   │
+│  └──────────────┘   ▼          ▼   └──────────────────┘   │
+│                  ┌──────────────┐                         │
+│                  │ Input Queue  │                         │
+│                  └──────┬───────┘                         │
+│                         ▼                                 │
+│                  ┌──────────────┐                         │
+│                  │   Command    │                         │
+│                  │   Router     │                         │
+│                  └──┬────┬───┬──┘                         │
+│                     │    │   │                            │
+│                     ▼    ▼   ▼                            │
+│              Button 1  Button 2  Button Q                 │
+│              (Camera)  (Voice)   (Quit)                   │
+└───────────────────────────────────────────────────────────┘
+```
+
+### Button 1 — Camera + AI Description
+```
+Press [1]
+   │
+   ▼
+📸 Camera captures image (cam.py)
+   │  └─ 30-frame warmup for Pi auto-exposure
+   ▼
+🤖 Image sent to OpenAI Vision (openai_vision.py)
+   │  └─ Test mode: returns mock description
+   ▼
+🔊 AI description spoken aloud (tts.py)
+   └─ Pi: Piper TTS ──▶ USB headset
+      Mac/Win: pyttsx3 ──▶ system speakers
+```
+
+### Button 2 — Voice Assistant
+```
+Press [2]
+   │
+   ▼
+🔊 "Listening." spoken (tts.py)     ◀── User knows to start talking
+   │
+   ▼
+🎤 Microphone activated (stt_mic.py)
+   │  ├─ 🔔 Start tone plays
+   │  ├─ Ambient noise calibration
+   │  └─ Records until silence detected
+   │
+   ▼
+🔔 End tone plays                    ◀── User knows recording stopped
+   │
+   ▼
+🔊 "Processing." spoken (tts.py)     ◀── User knows to wait
+   │
+   ▼
+🤖 Question sent to OpenAI (chat.py)
+   │  └─ Test mode: returns mock response
+   ▼
+🔊 AI response spoken aloud (tts.py)
+   └─ Pi: Piper TTS ──▶ USB headset
+      Mac/Win: pyttsx3 ──▶ system speakers
+```
+
+### TTS Engine Selection (automatic)
+```
+speak_text() called
+   │
+   ├─ Linux/Pi ─────┬─ Piper found? ──▶ 🔊 Piper TTS (high quality)
+   │                 │                      │
+   │                 │                      └─▶ text ──▶ [piper] ──pipe──▶ [aplay] ──▶ USB headset
+   │                 │
+   │                 └─ No Piper ──────▶ 🔊 espeak (fallback)
+   │
+   └─ macOS/Windows ───────────────────▶ 🔊 pyttsx3 (native voices)
+```
+
 ---
 
-## � Text-to-Speech System
+## 🔊 Text-to-Speech System
 
 Illuminate features an intelligent, cross-platform TTS system that automatically selects the best available engine:
 
@@ -110,7 +224,7 @@ The project is **optimized for low latency** and works automatically on Pi:
 
 ---
 
-## �📦 Detailed Setup (Platform-Specific)
+## 📦 Detailed Setup (Platform-Specific)
 
 <details>
 <summary><b>Raspberry Pi / Linux</b></summary>
@@ -159,7 +273,7 @@ pip install -r requirements.txt
 
 ---
 
-## � Troubleshooting
+## 🔧 GPIO & Hardware Setup
 
 ### GPIO Keypad Wiring
 
@@ -251,10 +365,9 @@ sudo raspi-config  # → Audio → Force headphone jack
 ```bash
 # List microphones
 python3 -c "import speech_recognition as sr; print(sr.Microphone.list_microphone_names())"
+```
 
----
-
-## 🔌 GPIO Hardware Setup (Raspberry Pi)
+### Camera Not Working
 ```bash
 # Check camera devices
 ls -l /dev/video*
@@ -286,36 +399,49 @@ EOF
 
 ## 📦 Dependencies
 
-**System (Linux):**
-- espeak, portaudio, python3-dev
+**System (Linux/Pi):**
+- espeak, portaudio19-dev, python3-dev
+- Piper TTS (optional, for high-quality audio)
 
-**Python:**
-- openai, opencv-python, SpeechRecognition, pyaudio, pyttsx3
-- RPi.GPIO (Raspberry Pi only)
+**Python (installed via requirements.txt):**
+- openai (Azure OpenAI SDK)
+- python-dotenv
+- opencv-python
+- SpeechRecognition, pyaudio
+- pyttsx3 (macOS/Windows TTS)
+- RPi.GPIO (Raspberry Pi only — install manually)
 
-**Hardware:**
-- Microphone, camera, GPIO buttons (Pi only)
+**Hardware (Pi deployment):**
+- USB microphone
+- Pi Camera Module or USB webcam
+- USB headphones/speaker
+- 4 push buttons + jumper wires (GPIO input)
 
 ---
 
 ## 📝 Code Structure
 
-**main.py** (~90 lines)
-- Imports modules
-- Defines command handlers (what each button does)
-- Coordinates GPIO + keyboard input
-- Main event loop
-
-**modules/hardware.py** - GPIO keypad with mock for testing
-**modules/keyboard_input.py** - Keyboard input handler
-**modules/tts.py** - Cross-platform text-to-speech (Piper/pyttsx3/espeak)
-**modules/piper_tts.py** - High-quality Piper TTS engine (Pi only)
-**modules/cam.py** - Camera capture
-**modules/openai_vision.py** - AI image description
-**modules/stt_mic.py** - Speech recognition
-**modules/chat.py** - AI Q&A
-
-Clean, modular design - easy to understand and extend!
+```
+Illuminate/
+├── main.py                  # Entry point, command routing, event loop
+├── .env                     # API keys (never committed)
+├── .env.example             # Template for .env setup
+├── requirements.txt         # Python dependencies
+├── images/                  # Captured images (auto-managed)
+├── models/                  # Piper voice models (Pi only)
+└── modules/
+    ├── cam.py               # Camera capture (OpenCV)
+    ├── chat.py              # Azure OpenAI chat (Q&A)
+    ├── openai_vision.py     # Azure OpenAI Vision (image description)
+    ├── stt_mic.py           # Speech-to-text via microphone
+    ├── tts.py               # Cross-platform TTS router (Piper/pyttsx3/espeak)
+    ├── piper_tts.py         # Piper TTS engine - Pi audio streaming
+    ├── tones.py             # Audio feedback tones (listening start/stop)
+    ├── hardware.py          # GPIO keypad input (with mock for non-Pi)
+    ├── keyboard_input.py    # Keyboard input handler
+    ├── ui.py                # Terminal UI (banner, prompts)
+    └── test_mode.py         # Mock responses for --test mode
+```
 
 ---
 

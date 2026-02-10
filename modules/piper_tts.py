@@ -108,7 +108,7 @@ class PiperTTS:
             self.piper_binary,
             "--model", self.model_path,
             "--output-raw",
-            "--length_scale", "1.0" # Adjust speed here (1.0 = normal, 0.8 = fast)
+            "--length_scale", "0.8" # Adjust speed here (1.0 = normal, 0.8 = fast)
         ]
 
         # 2. Prepare the Aplay Command (Consumer) - Pi-optimized for low latency
