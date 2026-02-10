@@ -29,3 +29,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Logs
+AUDIT.md

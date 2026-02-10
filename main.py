@@ -47,10 +47,12 @@ def voice_interaction():
         text = listen_from_mic()
         if text:
             print(f"[You said] {text}")
+            speak_text("Let me think.")
             response = query_openai(text)
             speak_text(response)
         else:
             print("[Info] No speech detected")
+            speak_text("I didn't catch that.")
     except Exception as e:
         print(f"[Error] Voice assistant failed: {e}")
         speak_text("Sorry, I couldn't process your request.")
