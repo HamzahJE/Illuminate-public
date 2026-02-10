@@ -27,7 +27,8 @@ def listen_from_mic(timeout=8, phrase_time_limit=15) -> str:
         listening_end()  # Play tone to indicate listening ended
 
     try:
-        # Use Google Web Speech API by default (requires internet) can use with pocketsphinx for offline
+        # Use Google Web Speech API (requires internet)
+        # For offline: swap with recognizer.recognize_sphinx(audio)
         text = recognizer.recognize_google(audio)
         print("You said:", text)
         return text
