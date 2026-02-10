@@ -1,13 +1,14 @@
-"""
-ILLUMINATE - AI Vision Assistant
-Main application entry point
-"""
-
 import threading
 import time
 import sys
 import argparse
+import os
 from queue import Queue
+from dotenv import load_dotenv
+
+# Load environment variables once at startup
+project_root = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(project_root, '.env'))
 
 # AI/Vision modules
 from modules.cam import capture_image
@@ -51,6 +52,7 @@ def voice_interaction():
             speak_text(response)
         else:
             print("[Info] No speech detected")
+            speak_text("I didn't catch that.")
     except Exception as e:
         print(f"[Error] Voice assistant failed: {e}")
         speak_text("Sorry, I couldn't process your request.")

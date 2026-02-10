@@ -1,6 +1,5 @@
 from openai import AzureOpenAI
 import os
-from dotenv import load_dotenv
 from modules.test_mode import is_test_mode, get_mock_chat_response
 
   #Create Query
@@ -14,14 +13,6 @@ def query_openai(prompt: str, default_answer="Sorry, I couldn't process your req
     if is_test_mode():
         print("[Test Mode] Returning mock chat response")
         return get_mock_chat_response(prompt)
-    
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    env_path = os.path.join(project_root, '.env')
-    if not load_dotenv(env_path):
-        raise RuntimeError("Unable to load .env file.")
-
-#Sets the current working directory to be the same as the file.
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     #Create Azure client
     client = AzureOpenAI(
