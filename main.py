@@ -1,8 +1,3 @@
-"""
-ILLUMINATE - AI Vision Assistant
-Main application entry point
-"""
-
 import threading
 import time
 import sys
