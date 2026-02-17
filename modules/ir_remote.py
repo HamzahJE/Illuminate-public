@@ -47,10 +47,13 @@ class IRRemote:
         """Read ir-keytable output and update last-seen timestamps."""
         while self.running:
             try:
+                # Use stdbuf to force ir-keytable to line-buffer stdout.
+                # Without this, glibc block-buffers pipe output (~4KB),
+                # causing a long delay before Python sees any lines.
                 self._process = subprocess.Popen(
-                    ["ir-keytable", "--test"],
+                    ["stdbuf", "-oL", "ir-keytable", "--test"],
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
                     text=True,
                     bufsize=1,
                 )
