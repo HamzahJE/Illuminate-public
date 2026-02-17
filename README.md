@@ -85,7 +85,7 @@ If no speech is detected: **"I didn't catch that."**
 - 🎤 Voice assistant for questions and responses  
 - 🧪 Test mode for development without API costs
 - 🔊 **High-quality TTS**: Piper (Pi), pyttsx3 (macOS/Windows), espeak fallback
-- ⌨️ Dual input: GPIO keypad (Pi) or keyboard (any system)
+- ⌨️ Triple input: GPIO keypad, IR remote, or keyboard
 - 🤖 Modular, easy-to-read code structure
 - 🔄 Works on: Raspberry Pi, Mac, Windows, Linux
 - 🎯 Intelligent audio device detection for USB headsets
@@ -100,22 +100,25 @@ If no speech is detected: **"I didn't catch that."**
 ┌───────────────────────────────────────────────────────────┐
 │                        main.py                            │
 │                                                           │
-│  ┌──────────────┐                  ┌──────────────────┐   │
-│  │ GPIO Keypad  │───┐          ┌───│ Keyboard Input   │   │
-│  │ (Pi only)    │   │          │   │                  │   │
-│  └──────────────┘   ▼          ▼   └──────────────────┘   │
-│                  ┌──────────────┐                         │
-│                  │ Input Queue  │                         │
-│                  └──────┬───────┘                         │
-│                         ▼                                 │
-│                  ┌──────────────┐                         │
-│                  │   Command    │                         │
-│                  │   Router     │                         │
-│                  └──┬────┬───┬──┘                         │
-│                     │    │   │                            │
-│                     ▼    ▼   ▼                            │
-│              Button 1  Button 2  Button Q                 │
-│              (Camera)  (Voice)   (Quit)                   │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐   │
+│  │ GPIO Keypad  │  │  IR Remote   │  │ Keyboard Input │   │
+│  │ (Pi only)    │  │  (TL-1838)   │  │                │   │
+│  └──────┬───────┘  └──────┬───────┘  └───────┬────────┘   │
+│         │                 │                  │            │
+│         └────────────┬────┴──────────────────┘            │
+│                      ▼                                    │
+│               ┌──────────────┐                            │
+│               │ Input Queue  │                            │
+│               └──────┬───────┘                            │
+│                      ▼                                    │
+│               ┌──────────────┐                            │
+│               │   Command    │                            │
+│               │   Router     │                            │
+│               └──┬────┬───┬──┘                            │
+│                  │    │   │                               │
+│                  ▼    ▼   ▼                               │
+│           Button 1  Button 2  Button Q                    │
+│           (Camera)  (Voice)   (Quit)                      │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -326,6 +329,98 @@ PIN_TO_KEY = {
 
 Save the file and restart the program. No other changes needed!
 
+### 📡 IR Remote Control (TL-1838)
+
+Illuminate supports an **infrared remote control** via a TL-1838 IR receiver, giving you a wireless way to trigger commands alongside the GPIO buttons and keyboard.
+
+#### Hardware Wiring
+
+| TL-1838 Pin | Connect To |
+|-------------|------------|
+| Signal (S)  | GPIO 17    |
+| VCC (+)     | 3.3V       |
+| GND (-)     | GND        |
+
+#### Software Setup
+
+```bash
+# 1. Install ir-keytable
+sudo apt install -y ir-keytable
+
+# 2. Load the gpio-ir device tree overlay (one-time)
+#    Add this line to /boot/config.txt (or /boot/firmware/config.txt on newer OS):
+#    dtoverlay=gpio-ir,gpio_pin=17
+sudo nano /boot/config.txt
+# Add:  dtoverlay=gpio-ir,gpio_pin=17
+# Save and reboot:
+sudo reboot
+
+# 3. Verify the receiver is detected
+sudo ir-keytable
+# You should see a /dev/input/eventX device listed
+
+# 4. Test that button presses are received
+sudo ir-keytable --test
+# Press buttons on your remote — you should see scancode output
+```
+
+#### Default Remote Button Mapping
+
+| Remote Button | Scancode | Function |
+|---------------|----------|----------|
+| Button → 1    | `0x0c`   | Camera + AI Description |
+| Button → 2    | `0x18`   | Voice Assistant |
+
+#### Finding Your Remote's Scancodes
+
+Different remotes send different scancodes. To find yours:
+
+```bash
+sudo ir-keytable --test
+# Press a button and note the scancode, e.g.:
+#   ... scancode = 0x0c
+```
+
+#### Customizing IR Button Mapping
+
+To change which remote buttons map to which commands:
+
+1. Open `modules/ir_remote.py`
+2. Edit the `IR_SCANCODE_MAP` dictionary:
+
+```python
+IR_SCANCODE_MAP = {
+    "0x0c": "1",  # Camera + AI Description
+    "0x18": "2",  # Voice Assistant
+    "0x1e": "q",  # Quit (add your own!)
+}
+```
+
+3. Save and restart the program.
+
+#### Troubleshooting IR Remote
+
+```bash
+# Check that gpio-ir overlay is loaded
+dtoverlay -l
+
+# Check for the IR input device
+ls /dev/input/event*
+
+# Make sure ir-keytable can see the device
+sudo ir-keytable
+
+# If no device found, verify /boot/config.txt has:
+#   dtoverlay=gpio-ir,gpio_pin=17
+# then reboot
+
+# Test raw input
+sudo ir-keytable --test
+# If you see scancodes when pressing buttons, the hardware is working
+```
+
+> **Note:** `ir-keytable --test` may require `sudo`. The program runs it automatically — if IR isn't working, try running Illuminate with `sudo python3 main.py`.
+
 ---
 
 ## 🔧 Troubleshooting
@@ -402,6 +497,7 @@ EOF
 **System (Linux/Pi):**
 - espeak, portaudio19-dev, python3-dev
 - Piper TTS (optional, for high-quality audio)
+- ir-keytable (optional, for IR remote control)
 
 **Python (installed via requirements.txt):**
 - openai (Azure OpenAI SDK)
@@ -416,6 +512,7 @@ EOF
 - Pi Camera Module or USB webcam
 - USB headphones/speaker
 - 4 push buttons + jumper wires (GPIO input)
+- TL-1838 IR receiver + IR remote (optional wireless control)
 
 ---
 
@@ -438,6 +535,7 @@ Illuminate/
     ├── piper_tts.py         # Piper TTS engine - Pi audio streaming
     ├── tones.py             # Audio feedback tones (listening start/stop)
     ├── hardware.py          # GPIO keypad input (with mock for non-Pi)
+    ├── ir_remote.py         # IR remote control via TL-1838 + ir-keytable
     ├── keyboard_input.py    # Keyboard input handler
     ├── ui.py                # Terminal UI (banner, prompts)
     └── test_mode.py         # Mock responses for --test mode
