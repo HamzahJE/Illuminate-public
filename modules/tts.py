@@ -46,7 +46,8 @@ def speak_text(text: str):
     """
     Cross-platform TTS optimized for Raspberry Pi:
     - Linux (Pi): Piper TTS (high quality, low latency) -> espeak fallback
-    - macOS/Windows: pyttsx3 for native integration
+    - macOS: Native 'say' command (reliable, no dependencies)
+    - Windows: pyttsx3 for native integration
 
     Always speaks — test mode only skips API calls, not audio output.
     """
@@ -67,7 +68,12 @@ def speak_text(text: str):
             else:
                 print("[TTS] Error: Neither Piper nor espeak available")
 
-        else:  # macOS or Windows
+        elif system_os == "Darwin":  # macOS
+            # Use native 'say' command — pyttsx3's NSRunLoop breaks on
+            # repeated runAndWait() calls causing silent no-ops intermittently
+            subprocess.run(['say', text], check=False)
+
+        else:  # Windows
             engine = _get_pyttsx3_engine()
             engine.say(text)
             engine.runAndWait()
@@ -81,8 +87,11 @@ def speak_text(text: str):
 def warm_up():
     """Pre-initialize the TTS engine so the first speak_text() call is instant.
     Call this once at startup (from main.py) while the banner is printing."""
-    if platform.system() == "Linux":
+    system_os = platform.system()
+    if system_os == "Linux":
         _get_piper_engine()
+    elif system_os == "Darwin":
+        pass  # macOS 'say' command needs no warm-up
     else:
         _get_pyttsx3_engine()
 
