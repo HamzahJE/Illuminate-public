@@ -32,11 +32,22 @@ from modules.test_mode import print_test_mode_banner, set_test_mode
 def capture_and_describe():
     """Command 1: Take photo and describe what's in it."""
     try:
-        print("\n[Action] Capturing image...")
+        t_start = time.time()
+        print(f"\n[Action] Capturing image...  [{time.strftime('%H:%M:%S')}]")
         capture_image()
+        t_captured = time.time()
+        print(f"[Timestamp] Image captured    +{t_captured - t_start:.2f}s")
+
+        print(f"[Action] Getting AI description...  [{time.strftime('%H:%M:%S')}]")
         description = get_image_description()
+        t_described = time.time()
         print(f"[AI] {description}")
+        print(f"[Timestamp] AI response received  +{t_described - t_captured:.2f}s  (total +{t_described - t_start:.2f}s)")
+
+        print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
         speak_text(description)
+        t_done = time.time()
+        print(f"[Timestamp] Speech finished  +{t_done - t_described:.2f}s  (total +{t_done - t_start:.2f}s)")
     except Exception as e:
         print(f"[Error] Camera/AI failed: {e}")
         speak_text("Sorry, there was an error processing the image.")
@@ -45,15 +56,28 @@ def capture_and_describe():
 def voice_interaction():
     """Command 2: Listen and respond to voice question."""
     try:
-        print("\n[Action] Listening...")
+        t_start = time.time()
+        print(f"\n[Action] Listening...  [{time.strftime('%H:%M:%S')}]")
         text = listen_from_mic()
+        t_heard = time.time()
         if text:
             print(f"[You said] {text}")
+            print(f"[Timestamp] Speech recognised  +{t_heard - t_start:.2f}s")
+
             # Immediate feedback so the user isn't sitting in silence
             # while we wait for the AI response (network call)
             speak_text("Let me think.")
+
+            print(f"[Action] Querying AI...  [{time.strftime('%H:%M:%S')}]")
+            t_query = time.time()
             response = query_openai(text)
+            t_responded = time.time()
+            print(f"[Timestamp] AI response received  +{t_responded - t_query:.2f}s  (total +{t_responded - t_start:.2f}s)")
+
+            print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
             speak_text(response)
+            t_done = time.time()
+            print(f"[Timestamp] Speech finished  +{t_done - t_responded:.2f}s  (total +{t_done - t_start:.2f}s)")
         else:
             print("[Info] No speech detected")
             speak_text("I didn't catch that.")
