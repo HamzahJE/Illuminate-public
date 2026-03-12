@@ -165,14 +165,19 @@ class PiperTTS:
             return
 
         if hasattr(self.voice, "synthesize"):
+            import inspect
+            sig_params = set(inspect.signature(self.voice.synthesize).parameters.keys())
+
+            # Only pass kwargs the installed version actually accepts
+            kwargs = {}
+            if "length_scale" in sig_params:
+                kwargs["length_scale"] = self.length_scale
+            if "sentence_silence" in sig_params:
+                kwargs["sentence_silence"] = 0.0
+
             wav_buffer = io.BytesIO()
             with wave.open(wav_buffer, "wb") as wav_file:
-                self.voice.synthesize(
-                    text,
-                    wav_file,
-                    length_scale=self.length_scale,
-                    sentence_silence=0.0,
-                )
+                self.voice.synthesize(text, wav_file, **kwargs)
 
             wav_buffer.seek(0)
             with wave.open(wav_buffer, "rb") as wav_file:
