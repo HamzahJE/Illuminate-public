@@ -3,6 +3,8 @@ import re
 import os
 import time
 import importlib
+import io
+import wave
 
 class PiperTTS:
     """
@@ -43,10 +45,17 @@ class PiperTTS:
             self.backend = "python"
             print(f"[TTS] Piper backend: python API ({self.sample_rate} Hz)")
 
+            if hasattr(self.voice, "synthesize_stream_raw"):
+                print("[TTS] Python API mode: streaming raw audio")
+            elif hasattr(self.voice, "synthesize"):
+                print("[TTS] Python API mode: synthesize WAV fallback")
+            else:
+                raise AttributeError("PiperVoice has neither synthesize_stream_raw nor synthesize")
+
             # Warm the inference session once at startup so the first real
             # response doesn't pay the ONNX/session initialization cost.
             t0 = time.time()
-            for _ in self.voice.synthesize_stream_raw("Okay.", length_scale=self.length_scale):
+            for _ in self._voice_audio_stream("Okay."):
                 break
             print(f"[TTS] Piper warm-up complete  +{time.time() - t0:.2f}s")
             return
@@ -142,6 +151,43 @@ class PiperTTS:
             "-q"
         ]
 
+    def _voice_audio_stream(self, text):
+        """Return raw audio chunks from the loaded Piper Python API.
+
+        Supports both newer streaming APIs and older WAV-writing APIs.
+        """
+        if hasattr(self.voice, "synthesize_stream_raw"):
+            yield from self.voice.synthesize_stream_raw(
+                text,
+                length_scale=self.length_scale,
+                sentence_silence=0.0,
+            )
+            return
+
+        if hasattr(self.voice, "synthesize"):
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, "wb") as wav_file:
+                self.voice.synthesize(
+                    text,
+                    wav_file,
+                    length_scale=self.length_scale,
+                    sentence_silence=0.0,
+                )
+
+            wav_buffer.seek(0)
+            with wave.open(wav_buffer, "rb") as wav_file:
+                sample_rate = wav_file.getframerate()
+                if sample_rate != self.sample_rate:
+                    self.sample_rate = sample_rate
+                while True:
+                    chunk = wav_file.readframes(2048)
+                    if not chunk:
+                        break
+                    yield chunk
+            return
+
+        raise AttributeError("PiperVoice has neither synthesize_stream_raw nor synthesize")
+
     def _play_stream(self, audio_stream, t0):
         """Play a stream of raw audio chunks through aplay."""
         aplay_process = None
@@ -203,11 +249,7 @@ class PiperTTS:
         try:
             if self.backend == "python":
                 print("[TTS] Speaking with cached Piper model")
-                audio_stream = self.voice.synthesize_stream_raw(
-                    text,
-                    length_scale=self.length_scale,
-                    sentence_silence=0.0,
-                )
+                audio_stream = self._voice_audio_stream(text)
                 self._play_stream(audio_stream, t0)
                 return
 
