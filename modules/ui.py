@@ -4,7 +4,7 @@ Handles terminal output and user prompts
 """
 
 
-def print_banner(has_gpio):
+def print_banner(has_gpio, has_ir=False):
     """Display welcome banner and instructions."""
     print("=" * 60)
     print("  ILLUMINATE - AI Vision Assistant")
@@ -17,9 +17,9 @@ def print_banner(has_gpio):
     print("\nInput:")
     if has_gpio:
         print("  • Hardware Keypad (GPIO buttons)")
-        print("  • Keyboard (type + Enter)")
-    else:
-        print("  • Keyboard Only (type + Enter)")
+    if has_ir:
+        print("  • IR Remote (TL-1838 on GPIO-17)")
+    print("  • Keyboard (type + Enter)")
     print("\n" + "-" * 60)
     print("Ready for input...")
     print("-" * 60 + "\n")

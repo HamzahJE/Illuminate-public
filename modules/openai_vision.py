@@ -1,6 +1,5 @@
 from openai import AzureOpenAI
 import os
-from dotenv import load_dotenv
 import base64
 from modules.test_mode import is_test_mode, get_mock_image_description
 
@@ -14,9 +13,6 @@ def get_image_description():
         return get_mock_image_description()
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    env_path = os.path.join(project_root, '.env')
-    if not load_dotenv(env_path):
-        raise RuntimeError("Unable to load .env file.")
 
     # Use hardcoded images folder
     image_path = os.path.join(project_root, 'images', 'image.jpg')

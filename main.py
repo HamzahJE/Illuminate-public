@@ -1,24 +1,26 @@
-"""
-ILLUMINATE - AI Vision Assistant
-Main application entry point
-"""
-
 import threading
 import time
 import sys
 import argparse
-from queue import Queue
+import os
+from queue import Queue, Empty
+from dotenv import load_dotenv
+
+# Load environment variables once at startup
+project_root = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(project_root, '.env'))
 
 # AI/Vision modules
 from modules.cam import capture_image
 from modules.openai_vision import get_image_description
-from modules.tts import speak_text
+from modules.tts import speak_text, warm_up
 from modules.stt_mic import listen_from_mic
 from modules.chat import query_openai
 
 # Input modules
 from modules.hardware import GPIOKeypad, has_gpio_hardware
 from modules.keyboard_input import KeyboardInput
+from modules.ir_remote import IRRemote, has_ir_keytable
 from modules.ui import print_banner
 from modules.test_mode import print_test_mode_banner, set_test_mode
 
@@ -47,10 +49,14 @@ def voice_interaction():
         text = listen_from_mic()
         if text:
             print(f"[You said] {text}")
+            # Immediate feedback so the user isn't sitting in silence
+            # while we wait for the AI response (network call)
+            speak_text("Let me think.")
             response = query_openai(text)
             speak_text(response)
         else:
             print("[Info] No speech detected")
+            speak_text("I didn't catch that.")
     except Exception as e:
         print(f"[Error] Voice assistant failed: {e}")
         speak_text("Sorry, I couldn't process your request.")
@@ -77,52 +83,59 @@ def process_command(command):
 # ============================================================================
 
 def setup_input_handlers(input_queue):
-    """Initialize and start GPIO and keyboard input handlers."""
+    """Initialize and start GPIO, keyboard, and IR remote input handlers."""
     gpio_keypad = GPIOKeypad(input_queue)
     keyboard = KeyboardInput(input_queue)
+    ir_remote = IRRemote(input_queue)
     
     gpio_keypad.setup()
     gpio_keypad.running = True
     keyboard.running = True
+    ir_remote.running = True
     
     # Start monitoring threads
     gpio_thread = threading.Thread(target=gpio_keypad.monitor_loop, daemon=True)
     kb_thread = threading.Thread(target=keyboard.monitor_loop, daemon=True)
+    ir_thread = threading.Thread(target=ir_remote.monitor_loop, daemon=True)
     gpio_thread.start()
     kb_thread.start()
+    ir_thread.start()
     time.sleep(0.1)  # Let keyboard prompt appear
     
-    return gpio_keypad, keyboard
+    return gpio_keypad, keyboard, ir_remote
 
 
-def run_command_loop(input_queue, gpio_keypad, keyboard):
+def run_command_loop(input_queue, gpio_keypad, keyboard, ir_remote):
     """Main event loop - process commands from queue."""
     try:
         while True:
-            if not input_queue.empty():
-                command = input_queue.get()
-                
-                # Clear any additional inputs that arrived while we process this command
-                while not input_queue.empty():
-                    input_queue.get()  # Discard queued inputs
-                
-                should_quit = process_command(command)
-                
-                if should_quit:
-                    print("\n[Shutdown] Exiting...")
-                    gpio_keypad.running = False
-                    keyboard.running = False
-                    gpio_keypad.cleanup()
-                    print("[Shutdown] Complete")
-                    print("\033[H\033[J")  # Clear terminal
-                    sys.exit(0)
-            
-            time.sleep(0.1)
+            try:
+                # Block until a command arrives (or timeout) — no CPU wasted
+                command = input_queue.get(timeout=0.1)
+            except Empty:
+                continue  # No input yet, loop back
+
+            # Clear any additional inputs that arrived while we process this command
+            while not input_queue.empty():
+                input_queue.get()  # Discard queued inputs
+
+            should_quit = process_command(command)
+
+            if should_quit:
+                print("\n[Shutdown] Exiting...")
+                gpio_keypad.running = False
+                keyboard.running = False
+                ir_remote.stop()
+                gpio_keypad.cleanup()
+                print("[Shutdown] Complete")
+                print("\033[H\033[J")  # Clear terminal
+                sys.exit(0)
     
     except KeyboardInterrupt:
         print("\n[Shutdown] Interrupted")
         gpio_keypad.running = False
         keyboard.running = False
+        ir_remote.stop()
         gpio_keypad.cleanup()
         print("\033[H\033[J")
         sys.exit(0)
@@ -141,9 +154,14 @@ def main():
     
     input_queue = Queue()
     print_test_mode_banner()
-    print_banner(has_gpio_hardware())
-    gpio_keypad, keyboard = setup_input_handlers(input_queue)
-    run_command_loop(input_queue, gpio_keypad, keyboard)
+    print_banner(has_gpio_hardware(), has_ir=has_ir_keytable())
+
+    # Pre-load the TTS engine while the user reads the banner
+    # so the first speak_text() call is instant, not delayed
+    warm_up()
+
+    gpio_keypad, keyboard, ir_remote = setup_input_handlers(input_queue)
+    run_command_loop(input_queue, gpio_keypad, keyboard, ir_remote)
 
 if __name__ == "__main__":
     main()

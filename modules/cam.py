@@ -1,6 +1,10 @@
 import cv2
 import os
 import time
+import platform
+
+# Pi-optimized: More warmup on Pi for better auto-adjustment, less on desktop
+WARMUP_FRAMES = 30 if platform.system() == 'Linux' else 10
 
 def capture_image():
     # Setup images folder
@@ -26,7 +30,8 @@ def capture_image():
     time.sleep(0.1)  # Allow camera to warm up more
 
     # Skip several frames to allow auto-adjustment
-    for _ in range(30): # the number 30 is what worked well in testing. Adjust if necessary. (if you are running on a laptop webcam you can lower this number)
+    # Pi optimized: Use WARMUP_FRAMES (default 30 on Linux/Pi, 10 elsewhere)
+    for _ in range(WARMUP_FRAMES):
         ret, frame = cam.read()
         if not ret:
             cam.release()

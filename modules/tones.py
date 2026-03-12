@@ -21,7 +21,7 @@ def play_tone(frequency=800, duration=0.15):
         try:
             subprocess.run(["beep", "-f", str(frequency), "-l", str(int(duration * 1000))], 
                          capture_output=True, timeout=1)
-        except:
+        except Exception:
             print("\a", end="", flush=True)  # Terminal bell fallback
     else:
         print("\a", end="", flush=True)  # Terminal bell fallback
