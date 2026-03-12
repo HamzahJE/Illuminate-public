@@ -15,6 +15,10 @@ pyaudio>=0.2.13
 # Text-to-Speech (for macOS/Windows)
 pyttsx3>=2.90
 
+# Raspberry Pi / Linux neural TTS (recommended for low latency)
+# Keeps the Piper model loaded in memory instead of spawning the CLI per utterance
+piper-tts>=1.4.1; platform_system == "Linux"
+
 # GPIO for Raspberry Pi
 # Install manually on Pi: pip install RPi.GPIO
 # RPi.GPIO>=0.7.1

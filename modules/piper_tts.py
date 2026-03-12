@@ -1,8 +1,8 @@
 import subprocess
 import re
 import os
-import sys
 import time
+import importlib
 
 class PiperTTS:
     """
@@ -11,22 +11,54 @@ class PiperTTS:
     """
     
     def __init__(self):
-        # Auto-detect Piper binary location
-        self.piper_binary = self._find_piper_binary()
-        if not self.piper_binary:
-            raise FileNotFoundError("Piper binary not found. Install with: pip install piper-tts")
-        
         # Auto-detect model file
         self.model_path = self._find_model()
         if not self.model_path:
             raise FileNotFoundError("Piper model not found. Install with: piper-tts --download")
         
+        # Auto-detect Piper binary location for CLI fallback
+        self.piper_binary = self._find_piper_binary()
+        
         # Pi-specific optimization: Smaller buffer for lower latency
         # 50ms buffer (50000 µs) — was 512ms, causing audible delay before first word
         self.buffer_size = 50  # milliseconds → µs via *1000 in speak()
+        self.length_scale = 0.8
         
         # Dynamically find the USB hardware once on startup
         self.audio_device = self._detect_usb_audio()
+        self.sample_rate = 22050
+        self.voice = None
+        self.backend = None
+
+        self._initialize_backend()
+
+    def _initialize_backend(self):
+        """Prefer the in-process Python API so the ONNX model stays loaded."""
+        try:
+            PiperVoice = importlib.import_module("piper").PiperVoice
+
+            config_path = f"{self.model_path}.json"
+            self.voice = PiperVoice.load(self.model_path, config_path=config_path)
+            self.sample_rate = self.voice.config.sample_rate
+            self.backend = "python"
+            print(f"[TTS] Piper backend: python API ({self.sample_rate} Hz)")
+
+            # Warm the inference session once at startup so the first real
+            # response doesn't pay the ONNX/session initialization cost.
+            t0 = time.time()
+            for _ in self.voice.synthesize_stream_raw("Okay.", length_scale=self.length_scale):
+                break
+            print(f"[TTS] Piper warm-up complete  +{time.time() - t0:.2f}s")
+            return
+        except Exception as e:
+            print(f"[TTS] Python API unavailable, falling back to CLI: {e}")
+
+        if self.piper_binary:
+            self.backend = "cli"
+            print("[TTS] Piper backend: CLI")
+            return
+
+        raise FileNotFoundError("Neither Piper Python API nor Piper CLI is available. Install with: pip install piper-tts")
 
     def _find_piper_binary(self):
         """Auto-detect Piper binary location."""
@@ -98,6 +130,67 @@ class PiperTTS:
         # Fallback to system default if USB is missing
         return "default"
 
+    def _build_aplay_cmd(self):
+        """Build ALSA playback command for raw mono 16-bit audio."""
+        return [
+            "aplay",
+            "-D", self.audio_device,
+            "-r", str(self.sample_rate),
+            "-f", "S16_LE",
+            "-t", "raw",
+            "-B", str(self.buffer_size * 1000),
+            "-q"
+        ]
+
+    def _play_stream(self, audio_stream, t0):
+        """Play a stream of raw audio chunks through aplay."""
+        aplay_process = None
+
+        try:
+            aplay_process = subprocess.Popen(
+                self._build_aplay_cmd(),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE
+            )
+
+            first_chunk_time = None
+            total_bytes = 0
+
+            for chunk in audio_stream:
+                if not chunk:
+                    continue
+
+                if first_chunk_time is None:
+                    first_chunk_time = time.time()
+                    print(f"[TTS] First audio chunk ready  +{first_chunk_time - t0:.2f}s")
+
+                aplay_process.stdin.write(chunk)
+                total_bytes += len(chunk)
+
+            if aplay_process.stdin:
+                aplay_process.stdin.close()
+
+            aplay_process.wait()
+            aplay_stderr = aplay_process.stderr.read().decode('utf-8', errors='replace').strip()
+
+            t_done = time.time()
+            if first_chunk_time is None:
+                print(f"[TTS] No audio generated  +{t_done - t0:.2f}s")
+            else:
+                print(f"[TTS] Playback finished  +{t_done - t0:.2f}s total ({total_bytes} bytes)")
+
+            if aplay_process.returncode != 0:
+                print(f"[TTS] aplay error (rc={aplay_process.returncode}): {aplay_stderr}")
+            elif aplay_stderr:
+                print(f"[TTS] aplay warning: {aplay_stderr}")
+
+        except BrokenPipeError:
+            print("[TTS] Audio pipe broke — is the USB audio device disconnected?")
+        finally:
+            if aplay_process and aplay_process.stdin and not aplay_process.stdin.closed:
+                aplay_process.stdin.close()
+
     def speak(self, text):
         """
         Synthesizes and streams speech to the USB headset with near-zero latency.
@@ -107,64 +200,45 @@ class PiperTTS:
 
         t0 = time.time()
 
-        # 1. Prepare the Piper Command (Producer)
-        piper_cmd = [
-            self.piper_binary,
-            "--model", self.model_path,
-            "--output-raw",
-            "--length_scale", "0.8" # Adjust speed here (1.0 = normal, 0.8 = fast)
-        ]
-
-        # 2. Prepare the Aplay Command (Consumer)
-        #    -B in microseconds: 50ms buffer keeps startup latency low while
-        #    still being safe on Pi. The old 512ms buffer caused the long
-        #    silence before the first word.
-        aplay_cmd = [
-            "aplay",
-            "-D", self.audio_device,
-            "-r", "22050",
-            "-f", "S16_LE",
-            "-t", "raw",
-            "-B", str(self.buffer_size * 1000),  # µs: 50 * 1000 = 50 000 µs = 50 ms
-            "-q" # Quiet mode (suppress logs)
-        ]
-
         try:
-            # 3. Start Processes with a Pipe
+            if self.backend == "python":
+                print("[TTS] Speaking with cached Piper model")
+                audio_stream = self.voice.synthesize_stream_raw(
+                    text,
+                    length_scale=self.length_scale,
+                    sentence_silence=0.0,
+                )
+                self._play_stream(audio_stream, t0)
+                return
+
+            # CLI fallback: still works, but slower because each call spawns piper
+            piper_cmd = [
+                self.piper_binary,
+                "--model", self.model_path,
+                "--output-raw",
+                "--length_scale", str(self.length_scale)
+            ]
+
             piper_process = subprocess.Popen(
                 piper_cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL # Suppress ONNX warnings
+                stderr=subprocess.DEVNULL
             )
 
-            aplay_process = subprocess.Popen(
-                aplay_cmd,
-                stdin=piper_process.stdout,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE
-            )
+            try:
+                audio_stream = iter(lambda: piper_process.stdout.read(4096), b"")
 
-            t_procs_started = time.time()
-            print(f"[TTS] Processes spawned  +{t_procs_started - t0:.2f}s")
+                print("[TTS] Speaking with Piper CLI fallback")
+                piper_process.stdin.write((text.strip() + "\n").encode('utf-8'))
+                piper_process.stdin.close()
 
-            # 4. Feed the text
-            piper_process.stdin.write(text.encode('utf-8'))
-            piper_process.stdin.close()
+                self._play_stream(audio_stream, t0)
+            finally:
+                if piper_process.stdout:
+                    piper_process.stdout.close()
 
-            # 5. Wait for audio to complete
-            aplay_process.wait()
-            aplay_stderr = aplay_process.stderr.read().decode('utf-8', errors='replace').strip()
             piper_process.wait()
-
-            t_done = time.time()
-            print(f"[TTS] Audio finished  +{t_done - t0:.2f}s total")
-
-            # Surface any aplay errors that would cause silent failures
-            if aplay_process.returncode != 0:
-                print(f"[TTS] aplay error (rc={aplay_process.returncode}): {aplay_stderr}")
-            elif aplay_stderr:
-                print(f"[TTS] aplay warning: {aplay_stderr}")
 
         except BrokenPipeError:
             print("[TTS] Audio pipe broke — is the USB audio device disconnected?")
