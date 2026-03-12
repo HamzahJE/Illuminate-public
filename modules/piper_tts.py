@@ -2,6 +2,7 @@ import subprocess
 import re
 import os
 import sys
+import time
 
 class PiperTTS:
     """
@@ -21,7 +22,8 @@ class PiperTTS:
             raise FileNotFoundError("Piper model not found. Install with: piper-tts --download")
         
         # Pi-specific optimization: Smaller buffer for lower latency
-        self.buffer_size = 512  # Optimized for low latency on Pi
+        # 50ms buffer (50000 µs) — was 512ms, causing audible delay before first word
+        self.buffer_size = 50  # milliseconds → µs via *1000 in speak()
         
         # Dynamically find the USB hardware once on startup
         self.audio_device = self._detect_usb_audio()
@@ -103,6 +105,8 @@ class PiperTTS:
         if not text:
             return
 
+        t0 = time.time()
+
         # 1. Prepare the Piper Command (Producer)
         piper_cmd = [
             self.piper_binary,
@@ -111,14 +115,17 @@ class PiperTTS:
             "--length_scale", "0.8" # Adjust speed here (1.0 = normal, 0.8 = fast)
         ]
 
-        # 2. Prepare the Aplay Command (Consumer) - Pi-optimized for low latency
+        # 2. Prepare the Aplay Command (Consumer)
+        #    -B in microseconds: 50ms buffer keeps startup latency low while
+        #    still being safe on Pi. The old 512ms buffer caused the long
+        #    silence before the first word.
         aplay_cmd = [
             "aplay",
             "-D", self.audio_device,
             "-r", "22050",
             "-f", "S16_LE",
             "-t", "raw",
-            "-B", str(self.buffer_size * 1000),  # Buffer in microseconds for low latency
+            "-B", str(self.buffer_size * 1000),  # µs: 50 * 1000 = 50 000 µs = 50 ms
             "-q" # Quiet mode (suppress logs)
         ]
 
@@ -138,18 +145,31 @@ class PiperTTS:
                 stderr=subprocess.PIPE
             )
 
+            t_procs_started = time.time()
+            print(f"[TTS] Processes spawned  +{t_procs_started - t0:.2f}s")
+
             # 4. Feed the text
             piper_process.stdin.write(text.encode('utf-8'))
             piper_process.stdin.close()
 
             # 5. Wait for audio to complete
             aplay_process.wait()
+            aplay_stderr = aplay_process.stderr.read().decode('utf-8', errors='replace').strip()
             piper_process.wait()
 
+            t_done = time.time()
+            print(f"[TTS] Audio finished  +{t_done - t0:.2f}s total")
+
+            # Surface any aplay errors that would cause silent failures
+            if aplay_process.returncode != 0:
+                print(f"[TTS] aplay error (rc={aplay_process.returncode}): {aplay_stderr}")
+            elif aplay_stderr:
+                print(f"[TTS] aplay warning: {aplay_stderr}")
+
         except BrokenPipeError:
-            print("[Error] Audio pipe broke. Is the device disconnected?")
+            print("[TTS] Audio pipe broke — is the USB audio device disconnected?")
         except Exception as e:
-            print(f"[Error] TTS Failed: {e}")
+            print(f"[TTS] Error: {e}")
 
 # --- Usage Example ---
 if __name__ == "__main__":
