@@ -18,3 +18,4 @@ pyttsx3>=2.90
 # GPIO for Raspberry Pi
 # Install manually on Pi: pip install RPi.GPIO
 # RPi.GPIO>=0.7.1
+gpiozero>=2.0.1

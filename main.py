@@ -95,7 +95,7 @@ def process_command(command):
     elif command == 'q':
         return True  # Quit
     elif command == '4':
-        print("\n[Info] Button 4 - No function assigned yet")
+        print("\n[Info] Button C - No function assigned yet")
     elif command:
         print(f"[Invalid] Unknown command: '{command}'")
     
