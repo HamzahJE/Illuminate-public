@@ -100,10 +100,13 @@ class PiperTTS:
                 wav_path = tmp_wav.name
 
             with wave.open(wav_path, "wb") as wav_file:
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(22050)
-                self.voice.synthesize(text_to_speak, wav_file)
+                if hasattr(self.voice, "synthesize_wav"):
+                    self.voice.synthesize_wav(text_to_speak, wav_file)
+                else:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(22050)
+                    self.voice.synthesize(text_to_speak, wav_file)
 
             started_at = time.time()
             play_wav = subprocess.Popen(
@@ -134,58 +137,66 @@ class PiperTTS:
 
         started_at = None
         finished_at = None
+        aplay_process = None
 
-        # 2. Prepare the Aplay Command (Consumer) - Pi-optimized for low latency
-        aplay_cmd = [
-            "aplay",
-            "-D", self.audio_device,
-            "-r", "22050",
-            "-c", "1",
-            "-f", "S16_LE",
-            "-t", "raw",
-            "-B", str(self.buffer_size * 1000),  # Buffer in microseconds for low latency
-            "-q" # Quiet mode (suppress logs)
-        ]
-
-        try:
-            # 3. Start audio playback process
-            aplay_process = subprocess.Popen(
-                aplay_cmd,
+        def _start_aplay(sample_rate=22050, sample_channels=1, sample_width=2):
+            fmt_map = {
+                1: "S8",
+                2: "S16_LE",
+                4: "S32_LE",
+            }
+            sample_format = fmt_map.get(sample_width, "S16_LE")
+            return subprocess.Popen(
+                [
+                    "aplay",
+                    "-D", self.audio_device,
+                    "-r", str(sample_rate),
+                    "-c", str(sample_channels),
+                    "-f", sample_format,
+                    "-t", "raw",
+                    "-B", str(self.buffer_size * 1000),
+                    "-q",
+                ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
             )
 
+        try:
             # 4. Stream synthesized PCM chunks from Piper Python API
-            if hasattr(self.voice, "synthesize_stream_raw"):
-                chunk_iterator = self.voice.synthesize_stream_raw(text_to_speak)
-            elif hasattr(self.voice, "synthesize_stream"):
-                chunk_iterator = self.voice.synthesize_stream(text_to_speak)
-            else:
-                chunk_iterator = None
+            if not hasattr(self.voice, "synthesize"):
+                return self._synthesize_and_play_wav(text_to_speak)
 
-            if chunk_iterator is not None:
-                for chunk in chunk_iterator:
-                    if not chunk:
-                        continue
+            for chunk in self.voice.synthesize(text_to_speak):
+                if not chunk:
+                    continue
 
-                    if isinstance(chunk, memoryview):
-                        chunk = chunk.tobytes()
-                    elif isinstance(chunk, bytearray):
-                        chunk = bytes(chunk)
-                    elif not isinstance(chunk, bytes):
-                        try:
-                            chunk = bytes(chunk)
-                        except Exception:
-                            continue
+                if hasattr(chunk, "audio_int16_bytes"):
+                    chunk_bytes = chunk.audio_int16_bytes
+                    sample_rate = getattr(chunk, "sample_rate", 22050)
+                    sample_channels = getattr(chunk, "sample_channels", 1)
+                    sample_width = getattr(chunk, "sample_width", 2)
+                else:
+                    chunk_bytes = bytes(chunk) if not isinstance(chunk, bytes) else chunk
+                    sample_rate = 22050
+                    sample_channels = 1
+                    sample_width = 2
 
-                    if started_at is None:
-                        started_at = time.time()
-                    aplay_process.stdin.write(chunk)
-            else:
-                # Older/newer Piper API fallback: synthesize to WAV, then play it.
-                aplay_process.stdin.close()
-                aplay_process.wait()
+                if not chunk_bytes:
+                    continue
+
+                if aplay_process is None:
+                    aplay_process = _start_aplay(
+                        sample_rate=sample_rate,
+                        sample_channels=sample_channels,
+                        sample_width=sample_width,
+                    )
+
+                if started_at is None:
+                    started_at = time.time()
+                aplay_process.stdin.write(chunk_bytes)
+
+            if aplay_process is None:
                 return self._synthesize_and_play_wav(text_to_speak)
 
             aplay_process.stdin.close()
