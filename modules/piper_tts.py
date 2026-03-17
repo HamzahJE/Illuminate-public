@@ -6,6 +6,11 @@ import tempfile
 import wave
 from piper.voice import PiperVoice  # type: ignore[import-not-found]
 
+try:
+    import onnxruntime as ort  # type: ignore[import-not-found]
+except Exception:
+    ort = None
+
 class PiperTTS:
     """
     Industry-standard wrapper for Piper TTS on Raspberry Pi.
@@ -13,6 +18,13 @@ class PiperTTS:
     """
     
     def __init__(self):
+        # Reduce ONNX Runtime console noise (e.g., GPU discovery warnings on Pi)
+        if ort is not None:
+            try:
+                ort.set_default_logger_severity(3)  # 0=verbose, 1=info, 2=warning, 3=error, 4=fatal
+            except Exception:
+                pass
+
         # Auto-detect model file
         self.model_path = self._find_model()
         if not self.model_path:
