@@ -26,7 +26,7 @@ class PiperTTS:
         
         # Pi-specific optimization: lower playback buffer for faster audible start
         self.buffer_size = 200  # milliseconds; passed to aplay as microseconds
-        self.preroll_ms = 120  # prebuffer target to avoid clipping initial words
+        self.preroll_ms = 200  # prebuffer target to avoid clipping initial words
         
         # Dynamically find the USB hardware once on startup
         self.audio_device = self._detect_usb_audio()
