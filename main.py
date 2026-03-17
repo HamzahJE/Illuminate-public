@@ -94,8 +94,8 @@ def process_command(command):
         voice_interaction()
     elif command == 'q':
         return True  # Quit
-    elif command == '4':
-        print("\n[Info] Button C - No function assigned yet")
+    elif command == '3':
+        print("\n[Info] Button C (Key '3') - No function assigned yet")
     elif command:
         print(f"[Invalid] Unknown command: '{command}'")
     

@@ -32,8 +32,8 @@ except (ImportError, RuntimeError):
 PIN_TO_KEY = {
     23: '1',  # Button A -> Camera + AI Description
     22: '2',  # Button B -> Voice Assistant
-    27: '4',  # Button C -> Unassigned
-    17: 'q',  # Button D -> Quit (temporary)
+    27: '3',  # Button C -> Unassigned
+    17: 'q',  # Button D -> Quit
 }
 
 
