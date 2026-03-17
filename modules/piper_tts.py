@@ -2,6 +2,7 @@ import subprocess
 import re
 import os
 import sys
+import time
 
 class PiperTTS:
     """
@@ -58,9 +59,11 @@ class PiperTTS:
         ]
         
         model_names = [
-            'en_US-amy-medium.onnx',
-            'en_US-lessac-medium.onnx',
-            'en_GB-alan-medium.onnx',
+            'en_US-lessac-low.onnx',
+            'en_US-amy-low.onnx',
+            # 'en_US-amy-medium.onnx',
+            # 'en_US-lessac-medium.onnx',
+            # 'en_GB-alan-medium.onnx',
         ]
         
         for model_dir in model_dirs:
@@ -99,9 +102,15 @@ class PiperTTS:
     def speak(self, text):
         """
         Synthesizes and streams speech to the USB headset with near-zero latency.
+
+        Returns:
+            dict: {"started_at": float | None, "finished_at": float | None}
         """
         if not text:
-            return
+            return {"started_at": None, "finished_at": None}
+
+        started_at = None
+        finished_at = None
 
         # 1. Prepare the Piper Command (Producer)
         piper_cmd = [
@@ -138,6 +147,10 @@ class PiperTTS:
                 stderr=subprocess.PIPE
             )
 
+            # Closest practical software timestamp for playback start.
+            # Actual DAC output starts shortly after this.
+            started_at = time.time()
+
             # 4. Feed the text
             piper_process.stdin.write(text.encode('utf-8'))
             piper_process.stdin.close()
@@ -145,11 +158,15 @@ class PiperTTS:
             # 5. Wait for audio to complete
             aplay_process.wait()
             piper_process.wait()
+            finished_at = time.time()
+            return {"started_at": started_at, "finished_at": finished_at}
 
         except BrokenPipeError:
             print("[Error] Audio pipe broke. Is the device disconnected?")
         except Exception as e:
             print(f"[Error] TTS Failed: {e}")
+
+        return {"started_at": started_at, "finished_at": finished_at}
 
 # --- Usage Example ---
 if __name__ == "__main__":

@@ -45,8 +45,10 @@ def capture_and_describe():
         print(f"[Timestamp] AI response received  +{t_described - t_captured:.2f}s  (total +{t_described - t_start:.2f}s)")
 
         print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
-        speak_text(description)
-        t_done = time.time()
+        speech_timing = speak_text(description) or {}
+        t_speech_started = speech_timing.get("started_at") or time.time()
+        t_done = speech_timing.get("finished_at") or time.time()
+        print(f"[Timestamp] Speech started   +{t_speech_started - t_described:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
         print(f"[Timestamp] Speech finished  +{t_done - t_described:.2f}s  (total +{t_done - t_start:.2f}s)")
     except Exception as e:
         print(f"[Error] Camera/AI failed: {e}")
@@ -75,8 +77,10 @@ def voice_interaction():
             print(f"[Timestamp] AI response received  +{t_responded - t_query:.2f}s  (total +{t_responded - t_start:.2f}s)")
 
             print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
-            speak_text(response)
-            t_done = time.time()
+            speech_timing = speak_text(response) or {}
+            t_speech_started = speech_timing.get("started_at") or time.time()
+            t_done = speech_timing.get("finished_at") or time.time()
+            print(f"[Timestamp] Speech started   +{t_speech_started - t_responded:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
             print(f"[Timestamp] Speech finished  +{t_done - t_responded:.2f}s  (total +{t_done - t_start:.2f}s)")
         else:
             print("[Info] No speech detected")
