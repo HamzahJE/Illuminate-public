@@ -21,8 +21,8 @@ class PiperTTS:
         if not self.model_path:
             raise FileNotFoundError("Piper model not found. Install with: piper-tts --download")
         
-        # Pi-specific optimization: Smaller buffer for lower latency
-        self.buffer_size = 512  # Optimized for low latency on Pi
+        # Pi-specific optimization: lower playback buffer for faster audible start
+        self.buffer_size = 80  # milliseconds; passed to aplay as microseconds
         
         # Dynamically find the USB hardware once on startup
         self.audio_device = self._detect_usb_audio()
@@ -106,7 +106,8 @@ class PiperTTS:
         Returns:
             dict: {"started_at": float | None, "finished_at": float | None}
         """
-        if not text:
+        text_to_speak = str(text).strip() if text is not None else ""
+        if not text_to_speak:
             return {"started_at": None, "finished_at": None}
 
         started_at = None
@@ -118,7 +119,6 @@ class PiperTTS:
             "--model", self.model_path,
             "--output-raw",
             "--length_scale", "1.2",# Adjust speed here (1.0 = normal, 0.8 = fast)
-            "--num-workers", "2"   # 2/3/4 depending on your Pi
 
         ]
 
@@ -150,7 +150,7 @@ class PiperTTS:
             )
 
             # 4. Feed the text
-            piper_process.stdin.write(text.encode('utf-8'))
+            piper_process.stdin.write(text_to_speak.encode('utf-8'))
             piper_process.stdin.close()
 
             # 5. Stream PCM manually so we can mark true playback start
