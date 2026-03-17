@@ -65,7 +65,7 @@ Once running, use these commands:
 - **[1]** - Capture photo and get AI description
 - **[2]** - Voice assistant (ask a question)
 - **[q]** - Quit program
-- **[4]** - Unassigned (available for custom features)
+- **[3]** - Unassigned (available for custom features)
 
 ### Voice Assistant UX (Button 2)
 The system uses **spoken cues** so the user always knows what's happening:
@@ -280,24 +280,26 @@ pip install -r requirements.txt
 
 ### GPIO Keypad Wiring
 
-| Button | GPIO Pin | Function |
-|--------|----------|----------|
-| Key 1  | GPIO 23  | Camera + AI Description |
-| Key 2  | GPIO 24  | Voice Assistant |
-| Key Q  | GPIO 25  | Quit Program |
-| Key 4  | GPIO 8   | Unassigned |
+| RX480E Output | GPIO Pin | Command | Function |
+|---------------|----------|---------|----------|
+| D0 (Button A) | GPIO 23  | `1`     | Camera + AI Description |
+| D1 (Button B) | GPIO 22  | `2`     | Voice Assistant |
+| D2 (Button C) | GPIO 27  | `3`     | Unassigned |
+| D3 (Button D) | GPIO 17  | `q`     | Quit Program (temporary) |
 
 **Wiring:**
-- One side of button → GPIO pin
-- Other side → Ground (GND)
-- Pull-up resistors enabled in software
-- Press = LOW signal (connects to ground)
+- RX480E-4A `D0-D3` outputs → Raspberry Pi GPIO pins shown above
+- RX480E-4A `VCC` → Pi 3.3V, RX480E-4A `GND` → Pi GND
+- Input is configured as **active-high** (`pull_up=False` in `gpiozero`)
+- Remote press = GPIO HIGH pulse from receiver output
+
+> Note: GPIO17 is currently used for `D3 -> q`. If you also enable the TL-1838 IR receiver on GPIO17, the two inputs will conflict.
 
 ### Hardware Needed
 - Raspberry Pi (any GPIO model)
 - USB microphone
 - Pi Camera or USB webcam
-- 4 push buttons + jumper wires
+- QIACHIP RX480E-4A receiver + paired RF remote
 - Headphones/speaker for audio
 
 ### Customizing GPIO Pins
@@ -310,20 +312,20 @@ To change which GPIO pins are used for your buttons:
 
 ```python
 PIN_TO_KEY = {
-    23: '1',  # GPIO23 → Button 1 (Camera)
-    24: '2',  # GPIO24 → Button 2 (Voice)
-    25: 'q',  # GPIO25 → Button Q (Quit)
-    8:  '4',  # GPIO8  → Button 4 (Unassigned)
+   23: '1',  # D0 / Button A
+   22: '2',  # D1 / Button B
+   27: '3',  # D2 / Button C (Unassigned)
+   17: 'q',  # D3 / Button D (Quit, temporary)
 }
 ```
 
 **Example:** To use GPIO 17 instead of GPIO 23 for Button 1:
 ```python
 PIN_TO_KEY = {
-    17: '1',  # Changed from 23 to 17
-    24: '2',
-    25: 'q',
-    8:  '4',
+   17: '1',
+   22: '2',
+   27: '3',
+   23: 'q',
 }
 ```
 
@@ -436,6 +438,22 @@ pip install RPi.GPIO
 python3 -c "import RPi.GPIO; print('GPIO OK')"
 ```
 
+### gpiozero "Failed to add edge detection" on Pi
+If you see this error while initializing GPIO buttons, install the `rpi-lgpio` build prerequisites first:
+
+```bash
+sudo apt update
+sudo apt install swig python3-dev liblgpio-dev liblgpio1 -y
+```
+
+Then install/upgrade GPIO Python packages:
+
+```bash
+pip install -U gpiozero rpi-lgpio
+```
+
+After installing, reboot the Pi and run the app again.
+
 ### No Audio Output (espeak/Piper)
 TTS not making sound?
 
@@ -511,7 +529,7 @@ EOF
 - USB microphone
 - Pi Camera Module or USB webcam
 - USB headphones/speaker
-- 4 push buttons + jumper wires (GPIO input)
+- QIACHIP RX480E-4A receiver + RF remote (GPIO input)
 - TL-1838 IR receiver + IR remote (optional wireless control)
 
 ---

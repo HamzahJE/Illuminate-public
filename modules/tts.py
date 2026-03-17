@@ -26,6 +26,7 @@ def _get_piper_engine():
     """Get or create cached Piper TTS engine (Linux/Pi)."""
     global _piper_engine
     if _piper_engine is None:
+        print("[TTS] first time.")
         try:
             from modules.piper_tts import PiperTTS
             _piper_engine = PiperTTS()
@@ -55,12 +56,11 @@ def speak_text(text: str):
 
     try:
         if system_os == "Linux":
-            # Try Piper first (neural TTS, much better quality than espeak)
             piper = _get_piper_engine()
             if piper:
                 piper.speak(text)
                 return
-
+           
             # Fallback to espeak if Piper isn't installed
             if shutil.which('espeak'):
                 subprocess.run(['espeak', '-ven-us', '-s', '150', '-a', '100', text],
