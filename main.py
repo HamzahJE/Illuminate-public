@@ -48,8 +48,10 @@ def capture_and_describe():
         speech_timing = speak_text(description) or {}
         t_speech_started = speech_timing.get("started_at") or time.time()
         t_done = speech_timing.get("finished_at") or time.time()
+        ttfb = t_speech_started - t_described
         print(f"[Timestamp] Speech started   +{t_speech_started - t_described:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
         print(f"[Timestamp] Speech finished  +{t_done - t_described:.2f}s  (total +{t_done - t_start:.2f}s)")
+        print(f"[Latency] TTS TTFB          {ttfb:.2f}s")
     except Exception as e:
         print(f"[Error] Camera/AI failed: {e}")
         speak_text("Sorry, there was an error processing the image.")
@@ -80,8 +82,10 @@ def voice_interaction():
             speech_timing = speak_text(response) or {}
             t_speech_started = speech_timing.get("started_at") or time.time()
             t_done = speech_timing.get("finished_at") or time.time()
+            ttfb = t_speech_started - t_responded
             print(f"[Timestamp] Speech started   +{t_speech_started - t_responded:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
             print(f"[Timestamp] Speech finished  +{t_done - t_responded:.2f}s  (total +{t_done - t_start:.2f}s)")
+            print(f"[Latency] TTS TTFB          {ttfb:.2f}s")
         else:
             print("[Info] No speech detected")
             speak_text("I didn't catch that.")
