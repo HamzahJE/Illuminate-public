@@ -2,6 +2,8 @@ import subprocess
 import re
 import os
 import time
+import tempfile
+import wave
 from piper.voice import PiperVoice  # type: ignore[import-not-found]
 
 class PiperTTS:
@@ -111,12 +113,59 @@ class PiperTTS:
             )
 
             # 4. Stream synthesized PCM chunks from Piper Python API
-            for chunk in self.voice.synthesize_stream_raw(text_to_speak):
-                if not chunk:
-                    continue
-                if started_at is None:
+            if hasattr(self.voice, "synthesize_stream_raw"):
+                chunk_iterator = self.voice.synthesize_stream_raw(text_to_speak)
+            elif hasattr(self.voice, "synthesize_stream"):
+                chunk_iterator = self.voice.synthesize_stream(text_to_speak)
+            else:
+                chunk_iterator = None
+
+            if chunk_iterator is not None:
+                for chunk in chunk_iterator:
+                    if not chunk:
+                        continue
+
+                    if isinstance(chunk, memoryview):
+                        chunk = chunk.tobytes()
+                    elif isinstance(chunk, bytearray):
+                        chunk = bytes(chunk)
+                    elif not isinstance(chunk, bytes):
+                        try:
+                            chunk = bytes(chunk)
+                        except Exception:
+                            continue
+
+                    if started_at is None:
+                        started_at = time.time()
+                    aplay_process.stdin.write(chunk)
+            else:
+                # Older/newer Piper API fallback: synthesize to WAV, then play it.
+                aplay_process.stdin.close()
+                aplay_process.wait()
+
+                wav_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+                        wav_path = tmp_wav.name
+
+                    with wave.open(wav_path, "wb") as wav_file:
+                        self.voice.synthesize(text_to_speak, wav_file)
+
                     started_at = time.time()
-                aplay_process.stdin.write(chunk)
+                    play_wav = subprocess.Popen(
+                        ["aplay", "-D", self.audio_device, "-q", wav_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                    )
+                    play_wav.wait()
+                    finished_at = time.time()
+                    return {"started_at": started_at, "finished_at": finished_at}
+                finally:
+                    if wav_path and os.path.exists(wav_path):
+                        try:
+                            os.remove(wav_path)
+                        except Exception:
+                            pass
 
             aplay_process.stdin.close()
 
