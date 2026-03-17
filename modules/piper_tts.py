@@ -90,6 +90,37 @@ class PiperTTS:
         # Fallback to system default if USB is missing
         return "default"
 
+    def _synthesize_and_play_wav(self, text_to_speak):
+        """Fallback path: synthesize to WAV file and play via aplay."""
+        wav_path = None
+        started_at = None
+        finished_at = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+                wav_path = tmp_wav.name
+
+            with wave.open(wav_path, "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(22050)
+                self.voice.synthesize(text_to_speak, wav_file)
+
+            started_at = time.time()
+            play_wav = subprocess.Popen(
+                ["aplay", "-D", self.audio_device, "-q", wav_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            play_wav.wait()
+            finished_at = time.time()
+            return {"started_at": started_at, "finished_at": finished_at}
+        finally:
+            if wav_path and os.path.exists(wav_path):
+                try:
+                    os.remove(wav_path)
+                except Exception:
+                    pass
+
     def speak(self, text):
         """
         Synthesizes and streams speech to the USB headset with near-zero latency.
@@ -155,38 +186,17 @@ class PiperTTS:
                 # Older/newer Piper API fallback: synthesize to WAV, then play it.
                 aplay_process.stdin.close()
                 aplay_process.wait()
-
-                wav_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
-                        wav_path = tmp_wav.name
-
-                    with wave.open(wav_path, "wb") as wav_file:
-                        wav_file.setnchannels(1)
-                        wav_file.setsampwidth(2)
-                        wav_file.setframerate(22050)
-                        self.voice.synthesize(text_to_speak, wav_file)
-
-                    started_at = time.time()
-                    play_wav = subprocess.Popen(
-                        ["aplay", "-D", self.audio_device, "-q", wav_path],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.PIPE,
-                    )
-                    play_wav.wait()
-                    finished_at = time.time()
-                    return {"started_at": started_at, "finished_at": finished_at}
-                finally:
-                    if wav_path and os.path.exists(wav_path):
-                        try:
-                            os.remove(wav_path)
-                        except Exception:
-                            pass
+                return self._synthesize_and_play_wav(text_to_speak)
 
             aplay_process.stdin.close()
 
             # 5. Wait for audio to complete
             aplay_process.wait()
+
+            # If stream path produced no playable PCM, use WAV fallback.
+            if started_at is None:
+                return self._synthesize_and_play_wav(text_to_speak)
+
             finished_at = time.time()
             return {"started_at": started_at, "finished_at": finished_at}
 
