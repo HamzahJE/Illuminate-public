@@ -26,6 +26,7 @@ def _get_piper_engine():
     """Get or create cached Piper TTS engine (Linux/Pi)."""
     global _piper_engine
     if _piper_engine is None:
+        print("[TTS] first time.")
         try:
             from modules.piper_tts import PiperTTS
             _piper_engine = PiperTTS()
@@ -61,6 +62,7 @@ def speak_text(text: str):
                 return
             else:
                 piper = _get_piper_engine()
+                print("[TTS] loading Piper engine again...")
 
             # Fallback to espeak if Piper isn't installed
             if shutil.which('espeak'):

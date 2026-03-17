@@ -42,11 +42,6 @@ class GPIOKeypad:
         self.buttons = {}
         self._is_available = True
     
-    def _on_button_press(self, pin, key):
-        """Callback when button is pressed."""
-        print(f"[Hardware] GPIO{pin} pressed -> '{key}'")
-        self.input_queue.put(key)
-    
     def setup(self):
         """Initialize GPIO pins for keypad input."""
         if not GPIOZERO_AVAILABLE:
@@ -64,8 +59,6 @@ class GPIOKeypad:
                     pull_up=False,
                     bounce_time=0.5
                 )
-                # Set callback for button press
-                button.when_pressed = lambda p=pin, k=key: self._on_button_press(p, k)
                 self.buttons[pin] = button
             
             print(f"[Hardware] Keypad initialized on pins: {list(PIN_TO_KEY.keys())}")
@@ -74,14 +67,22 @@ class GPIOKeypad:
             self._is_available = False
     
     def monitor_loop(self):
-        """Monitor loop - with gpiozero callbacks, we just keep the thread alive."""
+        """Monitor loop using polling (no GPIO edge callbacks)."""
         if not self._is_available:
             while self.running:
                 time.sleep(1)
             return
-        
-        # Callbacks handle all the work; just keep thread running
+
+        button_states = {pin: False for pin in self.buttons}
+
         while self.running:
+            for pin, button in self.buttons.items():
+                is_pressed = button.is_pressed
+                if not button_states[pin] and is_pressed:
+                    key = PIN_TO_KEY[pin]
+                    print(f"[Hardware] GPIO{pin} pressed -> '{key}'")
+                    self.input_queue.put(key)
+                button_states[pin] = is_pressed
             time.sleep(0.1)
     
     def cleanup(self):
