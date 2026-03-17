@@ -97,6 +97,7 @@ class PiperTTS:
             "aplay",
             "-D", self.audio_device,
             "-r", "22050",
+            "-c", "1",
             "-f", "S16_LE",
             "-t", "raw",
             "-B", str(self.buffer_size * 1000),  # Buffer in microseconds for low latency
@@ -149,6 +150,9 @@ class PiperTTS:
                         wav_path = tmp_wav.name
 
                     with wave.open(wav_path, "wb") as wav_file:
+                        wav_file.setnchannels(1)
+                        wav_file.setsampwidth(2)
+                        wav_file.setframerate(22050)
                         self.voice.synthesize(text_to_speak, wav_file)
 
                     started_at = time.time()
