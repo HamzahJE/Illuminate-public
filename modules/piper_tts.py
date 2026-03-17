@@ -27,6 +27,7 @@ class PiperTTS:
         # Pi-specific optimization: lower playback buffer for faster audible start
         self.buffer_size = 200  # milliseconds; passed to aplay as microseconds
         self.preroll_ms = 200  # prebuffer target to avoid clipping initial words
+        self.lead_in_ms = 120  # silence guard so USB startup drop eats silence, not speech
         
         # Dynamically find the USB hardware once on startup
         self.audio_device = self._detect_usb_audio()
@@ -212,6 +213,12 @@ class PiperTTS:
                     sample_channels=sample_channels,
                     sample_width=sample_width,
                 )
+
+                # Write a small silence lead-in before real speech.
+                bytes_per_sample = sample_width if sample_width in (1, 2, 4) else max(1, sample_width // 8)
+                lead_in_bytes = int(sample_rate * sample_channels * bytes_per_sample * (self.lead_in_ms / 1000.0))
+                if lead_in_bytes > 0:
+                    aplay_process.stdin.write(b"\x00" * lead_in_bytes)
 
                 for pcm in prebuffer:
                     if started_at is None:
