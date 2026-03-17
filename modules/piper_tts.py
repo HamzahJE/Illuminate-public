@@ -1,8 +1,8 @@
 import subprocess
 import re
 import os
-import sys
 import time
+from piper.voice import PiperVoice  # type: ignore[import-not-found]
 
 class PiperTTS:
     """
@@ -11,11 +11,6 @@ class PiperTTS:
     """
     
     def __init__(self):
-        # Auto-detect Piper binary location
-        self.piper_binary = self._find_piper_binary()
-        if not self.piper_binary:
-            raise FileNotFoundError("Piper binary not found. Install with: pip install piper-tts")
-        
         # Auto-detect model file
         self.model_path = self._find_model()
         if not self.model_path:
@@ -27,26 +22,8 @@ class PiperTTS:
         # Dynamically find the USB hardware once on startup
         self.audio_device = self._detect_usb_audio()
 
-    def _find_piper_binary(self):
-        """Auto-detect Piper binary location."""
-        # Check if piper is in PATH
-        import shutil
-        piper_in_path = shutil.which('piper')
-        if piper_in_path:
-            return piper_in_path
-        
-        # Common installation locations
-        common_paths = [
-            os.path.expanduser('~/.local/bin/piper'),
-            '/usr/local/bin/piper',
-            '/usr/bin/piper',
-        ]
-        
-        for path in common_paths:
-            if os.path.exists(path):
-                return path
-        
-        return None
+        # Load Piper voice once (persistent in-process model)
+        self.voice = PiperVoice.load(self.model_path)
 
     def _find_model(self):
         """Auto-detect Piper model location."""
@@ -113,15 +90,6 @@ class PiperTTS:
         started_at = None
         finished_at = None
 
-        # 1. Prepare the Piper Command (Producer)
-        piper_cmd = [
-            self.piper_binary,
-            "--model", self.model_path,
-            "--output-raw",
-            "--length_scale", "1.2",# Adjust speed here (1.0 = normal, 0.8 = fast)
-
-        ]
-
         # 2. Prepare the Aplay Command (Consumer) - Pi-optimized for low latency
         aplay_cmd = [
             "aplay",
@@ -134,14 +102,7 @@ class PiperTTS:
         ]
 
         try:
-            # 3. Start producer/consumer processes
-            piper_process = subprocess.Popen(
-                piper_cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL # Suppress ONNX warnings
-            )
-
+            # 3. Start audio playback process
             aplay_process = subprocess.Popen(
                 aplay_cmd,
                 stdin=subprocess.PIPE,
@@ -149,25 +110,18 @@ class PiperTTS:
                 stderr=subprocess.PIPE
             )
 
-            # 4. Feed the text
-            piper_process.stdin.write(text_to_speak.encode('utf-8'))
-            piper_process.stdin.close()
-
-            # 5. Stream PCM manually so we can mark true playback start
-            while True:
-                chunk = piper_process.stdout.read(4096)
+            # 4. Stream synthesized PCM chunks from Piper Python API
+            for chunk in self.voice.synthesize_stream_raw(text_to_speak):
                 if not chunk:
-                    break
+                    continue
                 if started_at is None:
                     started_at = time.time()
                 aplay_process.stdin.write(chunk)
 
             aplay_process.stdin.close()
-            piper_process.stdout.close()
 
-            # 6. Wait for audio to complete
+            # 5. Wait for audio to complete
             aplay_process.wait()
-            piper_process.wait()
             finished_at = time.time()
             return {"started_at": started_at, "finished_at": finished_at}
 
