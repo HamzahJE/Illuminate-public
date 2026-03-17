@@ -17,13 +17,7 @@ class PiperTTS:
     Handles dynamic USB audio detection and low-latency streaming.
     """
     
-    def __init__(self):
-        # Reduce ONNX Runtime console noise (e.g., GPU discovery warnings on Pi)
-        if ort is not None:
-            try:
-                ort.set_default_logger_severity(3)  # 0=verbose, 1=info, 2=warning, 3=error, 4=fatal
-            except Exception:
-                pass
+    def __init__(self):    
 
         # Auto-detect model file
         self.model_path = self._find_model()
@@ -32,7 +26,7 @@ class PiperTTS:
         
         # Pi-specific optimization: lower playback buffer for faster audible start
         self.buffer_size = 200  # milliseconds; passed to aplay as microseconds
-        self.preroll_ms = 50  # small silence to prevent first-word clipping on some USB devices
+        self.preroll_ms = 120  # prebuffer target to avoid clipping initial words
         
         # Dynamically find the USB hardware once on startup
         self.audio_device = self._detect_usb_audio()
@@ -163,45 +157,74 @@ class PiperTTS:
                 stderr=subprocess.PIPE,
             )
 
+        def _extract_chunk(chunk):
+            """Return (bytes, sample_rate, sample_channels, sample_width) or None."""
+            if not chunk:
+                return None
+
+            if hasattr(chunk, "audio_int16_bytes"):
+                chunk_bytes = chunk.audio_int16_bytes
+                sample_rate = getattr(chunk, "sample_rate", 22050)
+                sample_channels = getattr(chunk, "sample_channels", 1)
+                sample_width = getattr(chunk, "sample_width", 2)
+            else:
+                chunk_bytes = bytes(chunk) if not isinstance(chunk, bytes) else chunk
+                sample_rate = 22050
+                sample_channels = 1
+                sample_width = 2
+
+            if not chunk_bytes:
+                return None
+
+            return chunk_bytes, sample_rate, sample_channels, sample_width
+
         try:
             # 4. Stream synthesized PCM chunks from Piper Python API
             if not hasattr(self.voice, "synthesize"):
                 return self._synthesize_and_play_wav(text_to_speak)
 
-            for chunk in self.voice.synthesize(text_to_speak):
-                if not chunk:
+            chunk_iterator = self.voice.synthesize(text_to_speak)
+
+            prebuffer = []
+            prebuffer_bytes = 0
+            sample_rate = 22050
+            sample_channels = 1
+            sample_width = 2
+
+            # Prebuffer initial real speech audio so first words are not dropped.
+            for chunk in chunk_iterator:
+                parsed = _extract_chunk(chunk)
+                if not parsed:
                     continue
 
-                if hasattr(chunk, "audio_int16_bytes"):
-                    chunk_bytes = chunk.audio_int16_bytes
-                    sample_rate = getattr(chunk, "sample_rate", 22050)
-                    sample_channels = getattr(chunk, "sample_channels", 1)
-                    sample_width = getattr(chunk, "sample_width", 2)
-                else:
-                    chunk_bytes = bytes(chunk) if not isinstance(chunk, bytes) else chunk
-                    sample_rate = 22050
-                    sample_channels = 1
-                    sample_width = 2
+                chunk_bytes, sample_rate, sample_channels, sample_width = parsed
+                prebuffer.append(chunk_bytes)
+                prebuffer_bytes += len(chunk_bytes)
 
-                if not chunk_bytes:
-                    continue
+                bytes_per_sample = sample_width if sample_width in (1, 2, 4) else max(1, sample_width // 8)
+                target_bytes = int(sample_rate * sample_channels * bytes_per_sample * (self.preroll_ms / 1000.0))
+                if prebuffer_bytes >= target_bytes:
+                    break
 
-                if aplay_process is None:
-                    aplay_process = _start_aplay(
-                        sample_rate=sample_rate,
-                        sample_channels=sample_channels,
-                        sample_width=sample_width,
-                    )
+            if prebuffer:
+                aplay_process = _start_aplay(
+                    sample_rate=sample_rate,
+                    sample_channels=sample_channels,
+                    sample_width=sample_width,
+                )
 
-                    # Prime output device to avoid clipping first spoken phonemes.
-                    bytes_per_sample = sample_width if sample_width in (1, 2, 4) else max(1, sample_width // 8)
-                    silence_bytes = int(sample_rate * sample_channels * bytes_per_sample * (self.preroll_ms / 1000.0))
-                    if silence_bytes > 0:
-                        aplay_process.stdin.write(b"\x00" * silence_bytes)
+                for pcm in prebuffer:
+                    if started_at is None:
+                        started_at = time.time()
+                    aplay_process.stdin.write(pcm)
 
-                if started_at is None:
-                    started_at = time.time()
-                aplay_process.stdin.write(chunk_bytes)
+                # Continue streaming remaining chunks from the same iterator.
+                for chunk in chunk_iterator:
+                    parsed = _extract_chunk(chunk)
+                    if not parsed:
+                        continue
+                    chunk_bytes, _, _, _ = parsed
+                    aplay_process.stdin.write(chunk_bytes)
 
             if aplay_process is None:
                 return self._synthesize_and_play_wav(text_to_speak)
