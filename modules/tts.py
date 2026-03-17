@@ -56,14 +56,11 @@ def speak_text(text: str):
 
     try:
         if system_os == "Linux":
-            # Try Piper first (neural TTS, much better quality than espeak)
+            piper = _get_piper_engine()
             if piper:
                 piper.speak(text)
                 return
-            else:
-                piper = _get_piper_engine()
-                print("[TTS] loading Piper engine again...")
-
+           
             # Fallback to espeak if Piper isn't installed
             if shutil.which('espeak'):
                 subprocess.run(['espeak', '-ven-us', '-s', '150', '-a', '100', text],
