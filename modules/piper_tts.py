@@ -132,7 +132,7 @@ class PiperTTS:
         ]
 
         try:
-            # 3. Start Processes with a Pipe
+            # 3. Start producer/consumer processes
             piper_process = subprocess.Popen(
                 piper_cmd,
                 stdin=subprocess.PIPE,
@@ -142,20 +142,28 @@ class PiperTTS:
 
             aplay_process = subprocess.Popen(
                 aplay_cmd,
-                stdin=piper_process.stdout,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE
             )
-
-            # Closest practical software timestamp for playback start.
-            # Actual DAC output starts shortly after this.
-            started_at = time.time()
 
             # 4. Feed the text
             piper_process.stdin.write(text.encode('utf-8'))
             piper_process.stdin.close()
 
-            # 5. Wait for audio to complete
+            # 5. Stream PCM manually so we can mark true playback start
+            while True:
+                chunk = piper_process.stdout.read(4096)
+                if not chunk:
+                    break
+                if started_at is None:
+                    started_at = time.time()
+                aplay_process.stdin.write(chunk)
+
+            aplay_process.stdin.close()
+            piper_process.stdout.close()
+
+            # 6. Wait for audio to complete
             aplay_process.wait()
             piper_process.wait()
             finished_at = time.time()
