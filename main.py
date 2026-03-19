@@ -5,6 +5,7 @@ import argparse
 import os
 from queue import Queue, Empty
 from dotenv import load_dotenv
+os.environ["ORT_LOGGING_LEVEL"] = "3" # supress warning to clean up console output
 
 # Load environment variables once at startup
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -45,9 +46,13 @@ def capture_and_describe():
         print(f"[Timestamp] AI response received  +{t_described - t_captured:.2f}s  (total +{t_described - t_start:.2f}s)")
 
         print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
-        speak_text(description)
-        t_done = time.time()
+        speech_timing = speak_text(description) or {}
+        t_speech_started = speech_timing.get("started_at") or time.time()
+        t_done = speech_timing.get("finished_at") or time.time()
+        ttfb = t_speech_started - t_described
+        print(f"[Timestamp] Speech started   +{t_speech_started - t_described:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
         print(f"[Timestamp] Speech finished  +{t_done - t_described:.2f}s  (total +{t_done - t_start:.2f}s)")
+        print(f"[Latency] TTS TTFB          {ttfb:.2f}s")
     except Exception as e:
         print(f"[Error] Camera/AI failed: {e}")
         speak_text("Sorry, there was an error processing the image.")
@@ -64,10 +69,6 @@ def voice_interaction():
             print(f"[You said] {text}")
             print(f"[Timestamp] Speech recognised  +{t_heard - t_start:.2f}s")
 
-            # Immediate feedback so the user isn't sitting in silence
-            # while we wait for the AI response (network call)
-            speak_text("Let me think.")
-
             print(f"[Action] Querying AI...  [{time.strftime('%H:%M:%S')}]")
             t_query = time.time()
             response = query_openai(text)
@@ -75,9 +76,13 @@ def voice_interaction():
             print(f"[Timestamp] AI response received  +{t_responded - t_query:.2f}s  (total +{t_responded - t_start:.2f}s)")
 
             print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
-            speak_text(response)
-            t_done = time.time()
+            speech_timing = speak_text(response) or {}
+            t_speech_started = speech_timing.get("started_at") or time.time()
+            t_done = speech_timing.get("finished_at") or time.time()
+            ttfb = t_speech_started - t_responded
+            print(f"[Timestamp] Speech started   +{t_speech_started - t_responded:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
             print(f"[Timestamp] Speech finished  +{t_done - t_responded:.2f}s  (total +{t_done - t_start:.2f}s)")
+            print(f"[Latency] TTS TTFB          {ttfb:.2f}s")
         else:
             print("[Info] No speech detected")
             speak_text("I didn't catch that.")
