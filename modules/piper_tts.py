@@ -60,10 +60,10 @@ class PiperTTS:
         ]
         
         model_names = [
+            'en_US-amy-medium.onnx'
             'en_US-lessac-low.onnx',
             'en_US-amy-low.onnx',
             'en_US-lessac-medium.onnx',
-            'en_US-amy-medium.onnx',
             'en_GB-alan-medium.onnx',
         ]
         
