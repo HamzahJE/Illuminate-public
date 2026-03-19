@@ -68,10 +68,6 @@ def voice_interaction():
             print(f"[You said] {text}")
             print(f"[Timestamp] Speech recognised  +{t_heard - t_start:.2f}s")
 
-            # Immediate feedback so the user isn't sitting in silence
-            # while we wait for the AI response (network call)
-            speak_text("Let me think.")
-
             print(f"[Action] Querying AI...  [{time.strftime('%H:%M:%S')}]")
             t_query = time.time()
             response = query_openai(text)
