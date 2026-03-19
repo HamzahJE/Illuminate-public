@@ -138,7 +138,7 @@ class PiperTTS:
         started_at = None
         
         try:
-            sentences = re.split(r'(?<=[.!?]) +', text_to_speak)
+            sentences = re.split(r'(?<=[.!?,\;:;]) +', text_to_speak)
 
             for sentence in sentences:
                 if not sentence.strip():
