@@ -5,6 +5,7 @@ import argparse
 import os
 from queue import Queue, Empty
 from dotenv import load_dotenv
+os.environ["ORT_LOGGING_LEVEL"] = "3" # supress warning to clean up console output
 
 # Load environment variables once at startup
 project_root = os.path.dirname(os.path.abspath(__file__))

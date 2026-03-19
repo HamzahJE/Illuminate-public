@@ -31,7 +31,7 @@ def _get_piper_engine():
         try:
             from modules.piper_tts import PiperTTS
             _piper_engine = PiperTTS()
-            print(f"[TTS] Initialized Piper on device: {_piper_engine.audio_device}")
+            print(f"[TTS] Initialized Piper on device: {_piper_engine.device_id}")
         except FileNotFoundError as e:
             print(f"[TTS] Piper not available: {e}")
             return None
