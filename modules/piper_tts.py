@@ -1,39 +1,52 @@
-import subprocess
-import re
 import os
+import re
 import time
-import tempfile
-import wave
-from piper.voice import PiperVoice  # type: ignore[import-not-found]
-
-try:
-    import onnxruntime as ort  # type: ignore[import-not-found]
-except Exception:
-    ort = None
+import threading
+import numpy as np
+import sounddevice as sd
+from piper.voice import PiperVoice
 
 class PiperTTS:
     """
     Industry-standard wrapper for Piper TTS on Raspberry Pi.
-    Handles dynamic USB audio detection and low-latency streaming.
+    Features:
+    - Auto-detects local model files.
+    - Persistent sounddevice streaming (No ALSA cold-starts).
+    - Dynamic USB headset detection.
+    - On-the-fly NumPy resampling.
+    - Sentence chunking & background buffering for minimal Time-to-First-Audio.
     """
     
-    def __init__(self):    
-
-        # Auto-detect model file
-        self.model_path = self._find_model()
+    def __init__(self, model_path=None):    
+        # 1. Auto-detect model file if none is provided
+        self.model_path = model_path or self._find_model()
         if not self.model_path:
-            raise FileNotFoundError("Piper model not found. Install with: piper-tts --download")
+            raise FileNotFoundError("Piper model not found. Check your models directory.")
         
-        # Pi-specific optimization: lower playback buffer for faster audible start
-        self.buffer_size = 200  # milliseconds; passed to aplay as microseconds
-        self.preroll_ms = 200  # prebuffer target to avoid clipping initial words
-        self.lead_in_ms = 120  # silence guard so USB startup drop eats silence, not speech
-        
-        # Dynamically find the USB hardware once on startup
-        self.audio_device = self._detect_usb_audio()
-
-        # Load Piper voice once (persistent in-process model)
+        print(f"Loading Piper model: {self.model_path}")
         self.voice = PiperVoice.load(self.model_path)
+        self.piper_sr = self.voice.config.sample_rate 
+        
+        # 2. Dynamically find the USB hardware and its native sample rate
+        self.device_id, self.native_sr = self._detect_usb_audio()
+        
+        # 3. Thread-safe audio buffer to prevent script blocking
+        self._buffer = np.array([], dtype=np.int16)
+        self._lock = threading.Lock()
+        
+        print(f"Opening background audio channel at {self.native_sr}Hz...")
+        
+        # 4. Use 'callback' to keep the stream running continuously
+        self.stream = sd.OutputStream(
+            device=self.device_id,
+            samplerate=self.native_sr, 
+            channels=1, 
+            dtype='int16',
+            latency='low',
+            callback=self._audio_callback
+        )
+        self.stream.start()
+        print("System Ready! Headset is now locked awake.\n")
 
     def _find_model(self):
         """Auto-detect Piper model location."""
@@ -43,14 +56,15 @@ class PiperTTS:
             os.path.expanduser('~/.local/share/piper'),
             os.path.expanduser('~/piper/models'),
             '/usr/share/piper',
+            os.path.join(os.path.dirname(__file__), 'models'),
         ]
         
         model_names = [
             'en_US-lessac-low.onnx',
             'en_US-amy-low.onnx',
-            # 'en_US-amy-medium.onnx',
-            # 'en_US-lessac-medium.onnx',
-            # 'en_GB-alan-medium.onnx',
+            'en_US-lessac-medium.onnx',
+            'en_US-amy-medium.onnx',
+            'en_GB-alan-medium.onnx',
         ]
         
         for model_dir in model_dirs:
@@ -64,206 +78,114 @@ class PiperTTS:
         return None
 
     def _detect_usb_audio(self):
-        """Scans system hardware to find the dedicated USB Audio Device."""
+        """Scans sounddevice to find the dedicated USB Audio Device."""
         try:
-            # List all audio devices
-            result = subprocess.check_output(["aplay", "-l"], text=True)
-            
-            for line in result.split('\n'):
-                # Look for the specific USB card line, ignoring the internal 'bcm2835'
-                if line.startswith("card") and "USB" in line:
-                    # Extract the ALSA card name (e.g., 'Headphones' or 'Device')
-                    # Format: card 1: Name [Long Name], ...
-                    match = re.search(r'card \d+: (.+?) \[', line)
-                    if match:
-                        card_name = match.group(1)
-                        # Return the direct hardware plugin address
-                        return f"plughw:CARD={card_name},DEV=0"
-                        
+            devices = sd.query_devices()
+            for i, dev in enumerate(devices):
+                if "USB" in dev.get('name', '') and dev.get('max_output_channels', 0) > 0:
+                    native_sr = int(dev.get('default_samplerate', 44100))
+                    print(f"Auto-detected USB Audio: {dev['name']} (ID: {i}, Native Rate: {native_sr}Hz)")
+                    return i, native_sr
         except Exception as e:
             print(f"[Warning] Audio detection failed: {e}")
             
-        # Fallback to system default if USB is missing
-        return "default"
-
-    def _synthesize_and_play_wav(self, text_to_speak):
-        """Fallback path: synthesize to WAV file and play via aplay."""
-        wav_path = None
-        started_at = None
-        finished_at = None
+        print("[Warning] No USB output found. Falling back to system default.")
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
-                wav_path = tmp_wav.name
+            default_dev = sd.query_devices(kind='output')
+            return None, int(default_dev['default_samplerate'])
+        except Exception:
+            return None, 44100
 
-            with wave.open(wav_path, "wb") as wav_file:
-                if hasattr(self.voice, "synthesize_wav"):
-                    self.voice.synthesize_wav(text_to_speak, wav_file)
-                else:
-                    wav_file.setnchannels(1)
-                    wav_file.setsampwidth(2)
-                    wav_file.setframerate(22050)
-                    self.voice.synthesize(text_to_speak, wav_file)
+    def _fast_resample(self, audio_bytes):
+        """Ultra-fast NumPy linear interpolation to match the hardware's sample rate."""
+        data = np.frombuffer(audio_bytes, dtype=np.int16)
+        if self.piper_sr == self.native_sr:
+            return data
+            
+        t_orig = np.linspace(0, 1, len(data), endpoint=False)
+        t_target = np.linspace(0, 1, int(len(data) * self.native_sr / self.piper_sr), endpoint=False)
+        return np.interp(t_target, t_orig, data).astype(np.int16)
 
-            started_at = time.time()
-            play_wav = subprocess.Popen(
-                ["aplay", "-D", self.audio_device, "-q", wav_path],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
-            play_wav.wait()
-            finished_at = time.time()
-            return {"started_at": started_at, "finished_at": finished_at}
-        finally:
-            if wav_path and os.path.exists(wav_path):
-                try:
-                    os.remove(wav_path)
-                except Exception:
-                    pass
+    def _audio_callback(self, outdata, frames, time_info, status):
+        """
+        Runs continuously in the background. 
+        Pulls from buffer, or sends pure silence to keep the DAC awake.
+        """
+        with self._lock:
+            if len(self._buffer) >= frames:
+                # We have enough speech data to play
+                outdata[:, 0] = self._buffer[:frames]
+                self._buffer = self._buffer[frames:]
+            else:
+                # Not enough speech data. Play what we have, pad the rest with silence.
+                available = len(self._buffer)
+                if available > 0:
+                    outdata[:available, 0] = self._buffer
+                
+                # Magic line that prevents the USB headset from sleeping
+                outdata[available:, 0] = 0 
+                self._buffer = np.array([], dtype=np.int16)
 
     def speak(self, text):
         """
-        Synthesizes and streams speech to the USB headset with near-zero latency.
-
-        Returns:
-            dict: {"started_at": float | None, "finished_at": float | None}
+        Synthesizes and streams speech to the background buffer instantly.
+        Returns: dict: {"started_at": float | None, "finished_at": float | None}
         """
         text_to_speak = str(text).strip() if text is not None else ""
         if not text_to_speak:
             return {"started_at": None, "finished_at": None}
 
         started_at = None
-        finished_at = None
-        aplay_process = None
-
-        def _start_aplay(sample_rate=22050, sample_channels=1, sample_width=2):
-            fmt_map = {
-                1: "S8",
-                2: "S16_LE",
-                4: "S32_LE",
-            }
-            sample_format = fmt_map.get(sample_width, "S16_LE")
-            return subprocess.Popen(
-                [
-                    "aplay",
-                    "-D", self.audio_device,
-                    "-r", str(sample_rate),
-                    "-c", str(sample_channels),
-                    "-f", sample_format,
-                    "-t", "raw",
-                    "-B", str(self.buffer_size * 1000),
-                    "-q",
-                ],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
-
-        def _extract_chunk(chunk):
-            """Return (bytes, sample_rate, sample_channels, sample_width) or None."""
-            if not chunk:
-                return None
-
-            if hasattr(chunk, "audio_int16_bytes"):
-                chunk_bytes = chunk.audio_int16_bytes
-                sample_rate = getattr(chunk, "sample_rate", 22050)
-                sample_channels = getattr(chunk, "sample_channels", 1)
-                sample_width = getattr(chunk, "sample_width", 2)
-            else:
-                chunk_bytes = bytes(chunk) if not isinstance(chunk, bytes) else chunk
-                sample_rate = 22050
-                sample_channels = 1
-                sample_width = 2
-
-            if not chunk_bytes:
-                return None
-
-            return chunk_bytes, sample_rate, sample_channels, sample_width
-
+        
         try:
-            # 4. Stream synthesized PCM chunks from Piper Python API
-            if not hasattr(self.voice, "synthesize"):
-                return self._synthesize_and_play_wav(text_to_speak)
+            sentences = re.split(r'(?<=[.!?]) +', text_to_speak)
 
-            chunk_iterator = self.voice.synthesize(text_to_speak)
-
-            prebuffer = []
-            prebuffer_bytes = 0
-            sample_rate = 22050
-            sample_channels = 1
-            sample_width = 2
-
-            # Prebuffer initial real speech audio so first words are not dropped.
-            for chunk in chunk_iterator:
-                parsed = _extract_chunk(chunk)
-                if not parsed:
+            for sentence in sentences:
+                if not sentence.strip():
                     continue
-
-                chunk_bytes, sample_rate, sample_channels, sample_width = parsed
-                prebuffer.append(chunk_bytes)
-                prebuffer_bytes += len(chunk_bytes)
-
-                bytes_per_sample = sample_width if sample_width in (1, 2, 4) else max(1, sample_width // 8)
-                target_bytes = int(sample_rate * sample_channels * bytes_per_sample * (self.preroll_ms / 1000.0))
-                if prebuffer_bytes >= target_bytes:
-                    break
-
-            if prebuffer:
-                aplay_process = _start_aplay(
-                    sample_rate=sample_rate,
-                    sample_channels=sample_channels,
-                    sample_width=sample_width,
-                )
-
-                # Write a small silence lead-in before real speech.
-                bytes_per_sample = sample_width if sample_width in (1, 2, 4) else max(1, sample_width // 8)
-                lead_in_bytes = int(sample_rate * sample_channels * bytes_per_sample * (self.lead_in_ms / 1000.0))
-                if lead_in_bytes > 0:
-                    aplay_process.stdin.write(b"\x00" * lead_in_bytes)
-
-                for pcm in prebuffer:
+                
+                for chunk in self.voice.synthesize(sentence):
                     if started_at is None:
                         started_at = time.time()
-                    aplay_process.stdin.write(pcm)
+                    
+                    resampled_audio = self._fast_resample(chunk.audio_int16_bytes)
+                    
+                    # Dump audio to the background thread without blocking
+                    with self._lock:
+                        self._buffer = np.concatenate((self._buffer, resampled_audio))
 
-                # Continue streaming remaining chunks from the same iterator.
-                for chunk in chunk_iterator:
-                    parsed = _extract_chunk(chunk)
-                    if not parsed:
-                        continue
-                    chunk_bytes, _, _, _ = parsed
-                    aplay_process.stdin.write(chunk_bytes)
-
-            if aplay_process is None:
-                return self._synthesize_and_play_wav(text_to_speak)
-
-            aplay_process.stdin.close()
-
-            # 5. Wait for audio to complete
-            aplay_process.wait()
-
-            # If stream path produced no playable PCM, use WAV fallback.
-            if started_at is None:
-                return self._synthesize_and_play_wav(text_to_speak)
-
-            finished_at = time.time()
-            return {"started_at": started_at, "finished_at": finished_at}
-
-        except BrokenPipeError:
-            print("[Error] Audio pipe broke. Is the device disconnected?")
         except Exception as e:
             print(f"[Error] TTS Failed: {e}")
 
-        return {"started_at": started_at, "finished_at": finished_at}
+        # Note: finished_at marks when queuing is done, the actual audio is playing in the background
+        return {"started_at": started_at, "finished_at": time.time()}
+
+    def wait_until_done(self):
+        """Keeps the script alive until the background buffer finishes playing."""
+        while len(self._buffer) > 0:
+            time.sleep(0.1)
+        time.sleep(0.5) # Let the final tail frames finish naturally
+        
+    def close(self):
+        """Cleanly shut down the audio stream when your app exits."""
+        if hasattr(self, 'stream'):
+            self.stream.stop()
+            self.stream.close()
 
 # --- Usage Example ---
 if __name__ == "__main__":
     try:
         # Initialize the engine
         tts = PiperTTS()
-        print(f"Initialized TTS on device: {tts.audio_device}")
         
         # Speak
-        tts.speak("Integration Design and Architecture is online.")
+        print("Testing...")
+        metrics = tts.speak("The system is ready.")
+        print(f"Queuing Metrics: {metrics}")
+        
+        # Keep alive while background thread plays the audio
+        tts.wait_until_done()
+        tts.close()
         
     except Exception as e:
         print(f"Initialization Failed: {e}")
