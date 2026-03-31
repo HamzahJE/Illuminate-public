@@ -30,5 +30,8 @@ Thumbs.db
 *.swo
 *~
 
+<<<<<<< Updated upstream
 # Audit
 AUDIT.md
+=======
+>>>>>>> Stashed changes
