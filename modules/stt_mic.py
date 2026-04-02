@@ -25,10 +25,13 @@ def listen_from_mic(timeout=8, phrase_time_limit=15) -> str:
         # Listen for audio from mic
         audio = recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
         listening_end()  # Play tone to indicate listening ended
+        print("Listening Ended")
+
 
     try:
         # Use Google Web Speech API (requires internet)
         # For offline: swap with recognizer.recognize_sphinx(audio)
+        print("[STT] Sending audio to Google Speech API...")
         text = recognizer.recognize_google(audio)
         print("You said:", text)
         return text

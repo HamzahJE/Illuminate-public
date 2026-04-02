@@ -2,11 +2,15 @@ import os
 import sys
 from typing import Optional
 
+import platform
+
 import cv2
 import pytesseract
 
-# Set path (IMPORTANT for Windows)       ------remove/change for Raspberry Pi/Linux------
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Set Tesseract path based on platform
+if platform.system() == "Windows":
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Linux (Raspberry Pi) and macOS use system PATH — no explicit path needed
 
 # Ensure sibling modules can be imported when this file is executed directly.
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))

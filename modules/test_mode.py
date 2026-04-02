@@ -49,6 +49,24 @@ def get_mock_chat_response(user_text):
     return f"I heard you say: '{user_text}'. This is a test response - API calls are disabled in test mode."
 
 
+def get_mock_image_followup(user_text):
+    """Return mock image follow-up response based on user input."""
+    responses = {
+        "exit": "The exit sign is visible in the top-right corner, above the far door.",
+        "color": "The dominant colors are brown and white, with natural lighting.",
+        "read": "There is text on the laptop screen, but it's too small to read clearly.",
+        "people": "No people are visible in the image.",
+        "where": "Based on the image, you appear to be in an indoor room with furniture.",
+    }
+
+    text_lower = user_text.lower()
+    for keyword, response in responses.items():
+        if keyword in text_lower:
+            return response
+
+    return f"Based on the captured image, I can see details related to your question: '{user_text}'. This is a test response."
+
+
 def get_mock_speech_text():
     """Return mock speech recognition result."""
     phrases = [
