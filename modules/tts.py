@@ -2,6 +2,7 @@ import subprocess
 import platform
 import shutil
 import os
+import time
 
 
 # ---------------------------------------------------------------------------
@@ -26,10 +27,11 @@ def _get_piper_engine():
     """Get or create cached Piper TTS engine (Linux/Pi)."""
     global _piper_engine
     if _piper_engine is None:
+        print("[TTS] first time.")
         try:
             from modules.piper_tts import PiperTTS
             _piper_engine = PiperTTS()
-            print(f"[TTS] Initialized Piper on device: {_piper_engine.audio_device}")
+            print(f"[TTS] Initialized Piper on device: {_piper_engine.device_id}")
         except FileNotFoundError as e:
             print(f"[TTS] Piper not available: {e}")
             return None
@@ -53,35 +55,45 @@ def speak_text(text: str):
     """
     system_os = platform.system()
 
+    started_at = None
+    finished_at = None
+
     try:
         if system_os == "Linux":
-            # Try Piper first (neural TTS, much better quality than espeak)
             piper = _get_piper_engine()
             if piper:
-                piper.speak(text)
-                return
-
+                timing = piper.speak(text)
+                return timing or {"started_at": started_at, "finished_at": finished_at}
+           
             # Fallback to espeak if Piper isn't installed
             if shutil.which('espeak'):
+                started_at = time.time()
                 subprocess.run(['espeak', '-ven-us', '-s', '150', '-a', '100', text],
                              stderr=subprocess.DEVNULL, check=False)
+                finished_at = time.time()
             else:
                 print("[TTS] Error: Neither Piper nor espeak available")
 
         elif system_os == "Darwin":  # macOS
             # Use native 'say' command — pyttsx3's NSRunLoop breaks on
             # repeated runAndWait() calls causing silent no-ops intermittently
+            started_at = time.time()
             subprocess.run(['say', text], check=False)
+            finished_at = time.time()
 
         else:  # Windows
             engine = _get_pyttsx3_engine()
+            started_at = time.time()
             engine.say(text)
             engine.runAndWait()
+            finished_at = time.time()
 
     except ImportError:
         print("[TTS] Error: pyttsx3 not installed. Install with: pip install pyttsx3")
     except Exception as e:
         print(f"[TTS] Error: {e}")
+
+    return {"started_at": started_at, "finished_at": finished_at}
 
 
 def warm_up():

@@ -5,6 +5,7 @@ import argparse
 import os
 from queue import Queue, Empty
 from dotenv import load_dotenv
+os.environ["ORT_LOGGING_LEVEL"] = "3" # supress warning to clean up console output
 
 # Load environment variables once at startup
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -32,11 +33,26 @@ from modules.test_mode import print_test_mode_banner, set_test_mode
 def capture_and_describe():
     """Command 1: Take photo and describe what's in it."""
     try:
-        print("\n[Action] Capturing image...")
+        t_start = time.time()
+        print(f"\n[Action] Capturing image...  [{time.strftime('%H:%M:%S')}]")
         capture_image()
+        t_captured = time.time()
+        print(f"[Timestamp] Image captured    +{t_captured - t_start:.2f}s")
+
+        print(f"[Action] Getting AI description...  [{time.strftime('%H:%M:%S')}]")
         description = get_image_description()
+        t_described = time.time()
         print(f"[AI] {description}")
-        speak_text(description)
+        print(f"[Timestamp] AI response received  +{t_described - t_captured:.2f}s  (total +{t_described - t_start:.2f}s)")
+
+        print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
+        speech_timing = speak_text(description) or {}
+        t_speech_started = speech_timing.get("started_at") or time.time()
+        t_done = speech_timing.get("finished_at") or time.time()
+        ttfb = t_speech_started - t_described
+        print(f"[Timestamp] Speech started   +{t_speech_started - t_described:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
+        print(f"[Timestamp] Speech finished  +{t_done - t_described:.2f}s  (total +{t_done - t_start:.2f}s)")
+        print(f"[Latency] TTS TTFB          {ttfb:.2f}s")
     except Exception as e:
         print(f"[Error] Camera/AI failed: {e}")
         speak_text("Sorry, there was an error processing the image.")
@@ -45,15 +61,28 @@ def capture_and_describe():
 def voice_interaction():
     """Command 2: Listen and respond to voice question."""
     try:
-        print("\n[Action] Listening...")
+        t_start = time.time()
+        print(f"\n[Action] Listening...  [{time.strftime('%H:%M:%S')}]")
         text = listen_from_mic()
+        t_heard = time.time()
         if text:
             print(f"[You said] {text}")
-            # Immediate feedback so the user isn't sitting in silence
-            # while we wait for the AI response (network call)
-            speak_text("Let me think.")
+            print(f"[Timestamp] Speech recognised  +{t_heard - t_start:.2f}s")
+
+            print(f"[Action] Querying AI...  [{time.strftime('%H:%M:%S')}]")
+            t_query = time.time()
             response = query_openai(text)
-            speak_text(response)
+            t_responded = time.time()
+            print(f"[Timestamp] AI response received  +{t_responded - t_query:.2f}s  (total +{t_responded - t_start:.2f}s)")
+
+            print(f"[Action] Speaking response...  [{time.strftime('%H:%M:%S')}]")
+            speech_timing = speak_text(response) or {}
+            t_speech_started = speech_timing.get("started_at") or time.time()
+            t_done = speech_timing.get("finished_at") or time.time()
+            ttfb = t_speech_started - t_responded
+            print(f"[Timestamp] Speech started   +{t_speech_started - t_responded:.2f}s  (total +{t_speech_started - t_start:.2f}s)")
+            print(f"[Timestamp] Speech finished  +{t_done - t_responded:.2f}s  (total +{t_done - t_start:.2f}s)")
+            print(f"[Latency] TTS TTFB          {ttfb:.2f}s")
         else:
             print("[Info] No speech detected")
             speak_text("I didn't catch that.")
@@ -70,8 +99,8 @@ def process_command(command):
         voice_interaction()
     elif command == 'q':
         return True  # Quit
-    elif command == '4':
-        print("\n[Info] Button 4 - No function assigned yet")
+    elif command == '3':
+        print("\n[Info] Button C - No function assigned yet")
     elif command:
         print(f"[Invalid] Unknown command: '{command}'")
     

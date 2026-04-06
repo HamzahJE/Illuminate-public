@@ -1,51 +1,52 @@
-import subprocess
-import re
 import os
-import sys
+import re
+import time
+import threading
+import numpy as np
+import sounddevice as sd
+from piper.voice import PiperVoice
 
 class PiperTTS:
     """
     Industry-standard wrapper for Piper TTS on Raspberry Pi.
-    Handles dynamic USB audio detection and low-latency streaming.
+    Features:
+    - Auto-detects local model files.
+    - Persistent sounddevice streaming (No ALSA cold-starts).
+    - Dynamic USB headset detection.
+    - On-the-fly NumPy resampling.
+    - Sentence chunking & background buffering for minimal Time-to-First-Audio.
     """
     
-    def __init__(self):
-        # Auto-detect Piper binary location
-        self.piper_binary = self._find_piper_binary()
-        if not self.piper_binary:
-            raise FileNotFoundError("Piper binary not found. Install with: pip install piper-tts")
-        
-        # Auto-detect model file
-        self.model_path = self._find_model()
+    def __init__(self, model_path=None):    
+        # 1. Auto-detect model file if none is provided
+        self.model_path = model_path or self._find_model()
         if not self.model_path:
-            raise FileNotFoundError("Piper model not found. Install with: piper-tts --download")
+            raise FileNotFoundError("Piper model not found. Check your models directory.")
         
-        # Pi-specific optimization: Smaller buffer for lower latency
-        self.buffer_size = 512  # Optimized for low latency on Pi
+        print(f"Loading Piper model: {self.model_path}")
+        self.voice = PiperVoice.load(self.model_path)
+        self.piper_sr = self.voice.config.sample_rate 
         
-        # Dynamically find the USB hardware once on startup
-        self.audio_device = self._detect_usb_audio()
-
-    def _find_piper_binary(self):
-        """Auto-detect Piper binary location."""
-        # Check if piper is in PATH
-        import shutil
-        piper_in_path = shutil.which('piper')
-        if piper_in_path:
-            return piper_in_path
+        # 2. Dynamically find the USB hardware and its native sample rate
+        self.device_id, self.native_sr = self._detect_usb_audio()
         
-        # Common installation locations
-        common_paths = [
-            os.path.expanduser('~/.local/bin/piper'),
-            '/usr/local/bin/piper',
-            '/usr/bin/piper',
-        ]
+        # 3. Thread-safe audio buffer to prevent script blocking
+        self._buffer = np.array([], dtype=np.int16)
+        self._lock = threading.Lock()
         
-        for path in common_paths:
-            if os.path.exists(path):
-                return path
+        print(f"Opening background audio channel at {self.native_sr}Hz...")
         
-        return None
+        # 4. Use 'callback' to keep the stream running continuously
+        self.stream = sd.OutputStream(
+            device=self.device_id,
+            samplerate=self.native_sr, 
+            channels=1, 
+            dtype='int16',
+            latency='low',
+            callback=self._audio_callback
+        )
+        self.stream.start()
+        print("System Ready! Headset is now locked awake.\n")
 
     def _find_model(self):
         """Auto-detect Piper model location."""
@@ -55,10 +56,13 @@ class PiperTTS:
             os.path.expanduser('~/.local/share/piper'),
             os.path.expanduser('~/piper/models'),
             '/usr/share/piper',
+            os.path.join(os.path.dirname(__file__), 'models'),
         ]
         
         model_names = [
             'en_US-amy-medium.onnx',
+            'en_US-lessac-low.onnx',
+            'en_US-amy-low.onnx',
             'en_US-lessac-medium.onnx',
             'en_GB-alan-medium.onnx',
         ]
@@ -74,92 +78,114 @@ class PiperTTS:
         return None
 
     def _detect_usb_audio(self):
-        """Scans system hardware to find the dedicated USB Audio Device."""
+        """Scans sounddevice to find the dedicated USB Audio Device."""
         try:
-            # List all audio devices
-            result = subprocess.check_output(["aplay", "-l"], text=True)
-            
-            for line in result.split('\n'):
-                # Look for the specific USB card line, ignoring the internal 'bcm2835'
-                if line.startswith("card") and "USB" in line:
-                    # Extract the ALSA card name (e.g., 'Headphones' or 'Device')
-                    # Format: card 1: Name [Long Name], ...
-                    match = re.search(r'card \d+: (.+?) \[', line)
-                    if match:
-                        card_name = match.group(1)
-                        # Return the direct hardware plugin address
-                        return f"plughw:CARD={card_name},DEV=0"
-                        
+            devices = sd.query_devices()
+            for i, dev in enumerate(devices):
+                if "USB" in dev.get('name', '') and dev.get('max_output_channels', 0) > 0:
+                    native_sr = int(dev.get('default_samplerate', 44100))
+                    print(f"Auto-detected USB Audio: {dev['name']} (ID: {i}, Native Rate: {native_sr}Hz)")
+                    return i, native_sr
         except Exception as e:
             print(f"[Warning] Audio detection failed: {e}")
             
-        # Fallback to system default if USB is missing
-        return "default"
+        print("[Warning] No USB output found. Falling back to system default.")
+        try:
+            default_dev = sd.query_devices(kind='output')
+            return None, int(default_dev['default_samplerate'])
+        except Exception:
+            return None, 44100
+
+    def _fast_resample(self, audio_bytes):
+        """Ultra-fast NumPy linear interpolation to match the hardware's sample rate."""
+        data = np.frombuffer(audio_bytes, dtype=np.int16)
+        if self.piper_sr == self.native_sr:
+            return data
+            
+        t_orig = np.linspace(0, 1, len(data), endpoint=False)
+        t_target = np.linspace(0, 1, int(len(data) * self.native_sr / self.piper_sr), endpoint=False)
+        return np.interp(t_target, t_orig, data).astype(np.int16)
+
+    def _audio_callback(self, outdata, frames, time_info, status):
+        """
+        Runs continuously in the background. 
+        Pulls from buffer, or sends pure silence to keep the DAC awake.
+        """
+        with self._lock:
+            if len(self._buffer) >= frames:
+                # We have enough speech data to play
+                outdata[:, 0] = self._buffer[:frames]
+                self._buffer = self._buffer[frames:]
+            else:
+                # Not enough speech data. Play what we have, pad the rest with silence.
+                available = len(self._buffer)
+                if available > 0:
+                    outdata[:available, 0] = self._buffer
+                
+                # Magic line that prevents the USB headset from sleeping
+                outdata[available:, 0] = 0 
+                self._buffer = np.array([], dtype=np.int16)
 
     def speak(self, text):
         """
-        Synthesizes and streams speech to the USB headset with near-zero latency.
+        Synthesizes and streams speech to the background buffer instantly.
+        Returns: dict: {"started_at": float | None, "finished_at": float | None}
         """
-        if not text:
-            return
+        text_to_speak = str(text).strip() if text is not None else ""
+        if not text_to_speak:
+            return {"started_at": None, "finished_at": None}
 
-        # 1. Prepare the Piper Command (Producer)
-        piper_cmd = [
-            self.piper_binary,
-            "--model", self.model_path,
-            "--output-raw",
-            "--length_scale", "0.8" # Adjust speed here (1.0 = normal, 0.8 = fast)
-        ]
-
-        # 2. Prepare the Aplay Command (Consumer) - Pi-optimized for low latency
-        aplay_cmd = [
-            "aplay",
-            "-D", self.audio_device,
-            "-r", "22050",
-            "-f", "S16_LE",
-            "-t", "raw",
-            "-B", str(self.buffer_size * 1000),  # Buffer in microseconds for low latency
-            "-q" # Quiet mode (suppress logs)
-        ]
-
+        started_at = None
+        
         try:
-            # 3. Start Processes with a Pipe
-            piper_process = subprocess.Popen(
-                piper_cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL # Suppress ONNX warnings
-            )
+            sentences = re.split(r'(?<=[.!?,\;:;]) +', text_to_speak)
 
-            aplay_process = subprocess.Popen(
-                aplay_cmd,
-                stdin=piper_process.stdout,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE
-            )
+            for sentence in sentences:
+                if not sentence.strip():
+                    continue
+                
+                for chunk in self.voice.synthesize(sentence):
+                    if started_at is None:
+                        started_at = time.time()
+                    
+                    resampled_audio = self._fast_resample(chunk.audio_int16_bytes)
+                    
+                    # Dump audio to the background thread without blocking
+                    with self._lock:
+                        self._buffer = np.concatenate((self._buffer, resampled_audio))
 
-            # 4. Feed the text
-            piper_process.stdin.write(text.encode('utf-8'))
-            piper_process.stdin.close()
-
-            # 5. Wait for audio to complete
-            aplay_process.wait()
-            piper_process.wait()
-
-        except BrokenPipeError:
-            print("[Error] Audio pipe broke. Is the device disconnected?")
         except Exception as e:
             print(f"[Error] TTS Failed: {e}")
+
+        # Note: finished_at marks when queuing is done, the actual audio is playing in the background
+        return {"started_at": started_at, "finished_at": time.time()}
+
+    def wait_until_done(self):
+        """Keeps the script alive until the background buffer finishes playing."""
+        while len(self._buffer) > 0:
+            time.sleep(0.1)
+        time.sleep(0.5) # Let the final tail frames finish naturally
+        
+    def close(self):
+        """Cleanly shut down the audio stream when your app exits."""
+        if hasattr(self, 'stream'):
+            self.stream.stop()
+            self.stream.close()
 
 # --- Usage Example ---
 if __name__ == "__main__":
     try:
         # Initialize the engine
         tts = PiperTTS()
-        print(f"Initialized TTS on device: {tts.audio_device}")
         
         # Speak
-        tts.speak("Integration Design and Architecture is online.")
+        print("Testing...")
+        metrics = tts.speak("The system is ready.")
+        print(f"Queuing Metrics: {metrics}")
+        
+        # Keep alive while background thread plays the audio
+        tts.wait_until_done()
+        tts.close()
         
     except Exception as e:
         print(f"Initialization Failed: {e}")
