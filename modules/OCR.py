@@ -20,9 +20,12 @@ if ROOT_DIR not in sys.path:
 from modules.tts import speak_text
 
 
+OCR_IMAGES_FOLDER = "ocr_images"
+
+
 def _find_default_jpg() -> str:
-    """Return the first JPG path found in the images folder."""
-    images_dir = os.path.join(ROOT_DIR, "images")
+    """Return the first JPG path found in the OCR images folder."""
+    images_dir = os.path.join(ROOT_DIR, OCR_IMAGES_FOLDER)
     image_path = os.path.join(images_dir, "image.jpg")
     if not os.path.exists(image_path):
         for file_name in os.listdir(images_dir):

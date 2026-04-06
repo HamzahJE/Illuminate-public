@@ -15,6 +15,8 @@ import subprocess
 import threading
 import re
 import time
+import shutil
+import sys
 
 
 # Scancode-to-command mapping
@@ -36,12 +38,17 @@ class IRRemote:
         self.input_queue = input_queue
         self.running = False
         self._process = None
+        self._is_available = has_ir_keytable()
         self._lock = threading.Lock()
         # Tracks the last time each scancode was seen (only for mapped codes)
         # Key: scancode str, Value: timestamp (time.monotonic)
         self._last_seen = {}
         # Tracks which scancodes have already been fired (waiting for full release)
         self._fired = set()
+
+    def is_available(self):
+        """Return whether IR monitoring is supported on this host."""
+        return self._is_available
 
     def _reader_loop(self):
         """Read ir-keytable output and update last-seen timestamps."""
@@ -110,6 +117,10 @@ class IRRemote:
 
     def monitor_loop(self):
         """Start reader and release-checker threads."""
+        if not self._is_available:
+            print("[IR Remote] Disabled (requires Linux + ir-keytable + IR receiver)")
+            return
+
         print("[IR Remote] Starting ir-keytable listener (release-to-fire mode)...")
 
         # Start the release checker in a separate daemon thread
@@ -132,11 +143,8 @@ class IRRemote:
 
 def has_ir_keytable():
     """Check if ir-keytable is available on the system."""
-    try:
-        result = subprocess.run(
-            ["which", "ir-keytable"],
-            capture_output=True, text=True
-        )
-        return result.returncode == 0
-    except Exception:
+    # ir-keytable is a Linux LIRC utility and is not supported on macOS/Windows.
+    if not sys.platform.startswith("linux"):
         return False
+
+    return shutil.which("ir-keytable") is not None

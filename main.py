@@ -140,7 +140,7 @@ def ocr_read():
     try:
         t_start = time.time()
         print(f"\n[Action] Capturing image for OCR...  [{time.strftime('%H:%M:%S')}]")
-        image_path = capture_image()
+        image_path = capture_image(folder_name='ocr_images')
         t_captured = time.time()
         print(f"[Timestamp] Image captured    +{t_captured - t_start:.2f}s")
 
@@ -192,15 +192,17 @@ def setup_input_handlers(input_queue):
     gpio_keypad.setup()
     gpio_keypad.running = True
     keyboard.running = True
-    ir_remote.running = True
+    if ir_remote.is_available():
+        ir_remote.running = True
     
     # Start monitoring threads
     gpio_thread = threading.Thread(target=gpio_keypad.monitor_loop, daemon=True)
     kb_thread = threading.Thread(target=keyboard.monitor_loop, daemon=True)
-    ir_thread = threading.Thread(target=ir_remote.monitor_loop, daemon=True)
     gpio_thread.start()
     kb_thread.start()
-    ir_thread.start()
+    if ir_remote.is_available():
+        ir_thread = threading.Thread(target=ir_remote.monitor_loop, daemon=True)
+        ir_thread.start()
     time.sleep(0.1)  # Let keyboard prompt appear
     
     return gpio_keypad, keyboard, ir_remote
