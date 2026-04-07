@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import os
 import platform
 import time
@@ -40,6 +41,17 @@ def capture_image(folder_name='images'):
     if not ret:
         cam.release()
         raise RuntimeError("Failed to grab frame")
+
+    # Correct overexposure via gamma correction if image is too bright
+    gray_check = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    mean_brightness = np.mean(gray_check)
+    if mean_brightness > 170:
+        # Apply gamma > 1 to darken overexposed image
+        gamma = 1.0 + (mean_brightness - 170) / 85.0  # scales ~1.0–2.0
+        inv_gamma = 1.0 / gamma
+        lut = np.array([((i / 255.0) ** inv_gamma) * 255
+                        for i in range(256)]).astype("uint8")
+        image = cv2.LUT(image, lut)
 
     image_path = os.path.join(folder, "image.jpg")
     cv2.imwrite(image_path, image)
