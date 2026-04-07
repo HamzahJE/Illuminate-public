@@ -1,7 +1,7 @@
 import cv2
-import numpy as np
 import os
 import platform
+import subprocess
 import time
 
 IS_PI = platform.system() == 'Linux'
@@ -27,12 +27,39 @@ def capture_image(folder_name='images'):
             os.remove(file_path)
             
 
+    # On Pi, reduce exposure via v4l2 before opening camera
+    if IS_PI:
+        try:
+            # Print available controls so we can see what this camera supports
+            result = subprocess.run(
+                ["v4l2-ctl", "-d", "/dev/video0", "--list-ctrls"],
+                capture_output=True, text=True, timeout=5
+            )
+            print("Camera controls:\n", result.stdout)
+
+            # Disable auto-exposure (1=manual, 3=auto on most v4l2 cameras)
+            subprocess.run(
+                ["v4l2-ctl", "-d", "/dev/video0",
+                 "-c", "exposure_auto=1"],
+                capture_output=True, timeout=5
+            )
+            # Set a low exposure value
+            subprocess.run(
+                ["v4l2-ctl", "-d", "/dev/video0",
+                 "-c", "exposure_absolute=150"],
+                capture_output=True, timeout=5
+            )
+        except FileNotFoundError:
+            print("v4l2-ctl not found, skipping exposure control")
+        except subprocess.TimeoutExpired:
+            pass
+
     cam = cv2.VideoCapture(0)
     if not cam.isOpened():
         raise RuntimeError("Cannot open camera")
 
     time.sleep(0.1)
-    
+
     for _ in range(WARMUP_FRAMES):
         cam.read()
 
@@ -41,16 +68,6 @@ def capture_image(folder_name='images'):
     if not ret:
         cam.release()
         raise RuntimeError("Failed to grab frame")
-
-    # Correct overexposure via gamma correction if image is too bright
-    gray_check = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    mean_brightness = np.mean(gray_check)
-    if mean_brightness > 127:
-        # Apply gamma > 1 to darken overexposed image
-        gamma = 1.0 + (mean_brightness - 127) / 50.0  # scales ~1.0–3.5
-        lut = np.array([((i / 255.0) ** gamma) * 255
-                        for i in range(256)]).astype("uint8")
-        image = cv2.LUT(image, lut)
 
     image_path = os.path.join(folder, "image.jpg")
     cv2.imwrite(image_path, image)
