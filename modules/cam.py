@@ -48,8 +48,7 @@ def capture_image(folder_name='images'):
     if mean_brightness > 170:
         # Apply gamma > 1 to darken overexposed image
         gamma = 1.0 + (mean_brightness - 170) / 85.0  # scales ~1.0–2.0
-        inv_gamma = 1.0 / gamma
-        lut = np.array([((i / 255.0) ** inv_gamma) * 255
+        lut = np.array([((i / 255.0) ** gamma) * 255
                         for i in range(256)]).astype("uint8")
         image = cv2.LUT(image, lut)
 
