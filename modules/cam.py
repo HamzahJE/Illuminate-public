@@ -4,7 +4,7 @@ import platform
 import time
 
 IS_PI = platform.system() == 'Linux'
-SENSOR_SETTLE_SECS = 0.5 if IS_PI else 0.1
+SENSOR_SETTLE_SECS = 0.7 if IS_PI else 0.1
 BUFFER_FLUSH_FRAMES = 3
 
 
