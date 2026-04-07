@@ -66,13 +66,20 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
     # Fast denoise (Gaussian is much cheaper than bilateral on Pi)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    # Adaptive threshold handles shadows and varied brightness
-    gray = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 10
-    )
+    # Otsu's threshold — only binarizes well when there's actual text contrast
+    _, gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    custom_config = r"--oem 3 --psm 6"
-    return pytesseract.image_to_string(gray, config=custom_config)
+    # psm 3 = auto page segmentation, won't force text where there isn't any
+    custom_config = r"--oem 3 --psm 3"
+    data = pytesseract.image_to_data(gray, config=custom_config, output_type=pytesseract.Output.DICT)
+
+    # Only keep words where Tesseract confidence is above 60%
+    words = [
+        data["text"][i]
+        for i in range(len(data["text"]))
+        if int(data["conf"][i]) > 60 and data["text"][i].strip()
+    ]
+    return " ".join(words)
 
 
 def speak_text_from_image(image_path: Optional[str] = None) -> str:
