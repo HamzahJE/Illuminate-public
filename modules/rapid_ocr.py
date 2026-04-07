@@ -62,7 +62,7 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
         return ""
 
     # result is list of [bbox, text, confidence]
-    words = [text for (_, text, conf) in result if conf > 0.4 and text.strip()]
+    words = [text for (_, text, conf) in result if float(conf) > 0.4 and text.strip()]
 
     if is_test_mode():
         debug_dir = os.path.join(ROOT_DIR, OCR_DEBUG_FOLDER)
@@ -71,7 +71,7 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
         for (bbox, text, conf) in result:
             pts = np.array(bbox, dtype=np.int32)
             cv2.polylines(debug_img, [pts], True, (0, 255, 0), 2)
-            cv2.putText(debug_img, f"{text} ({conf:.0%})", tuple(pts[0]),
+            cv2.putText(debug_img, f"{text} ({float(conf):.0%})", tuple(pts[0]),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         cv2.imwrite(os.path.join(debug_dir, "rapidocr_debug.jpg"), debug_img)
         print(f"Debug image saved to {debug_dir}")
