@@ -3,7 +3,8 @@ import sys
 from typing import Optional
 
 import cv2
-import easyocr
+import numpy as np
+from rapidocr_onnxruntime import RapidOCR
 
 # Ensure sibling modules can be imported when this file is executed directly.
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -16,14 +17,14 @@ from modules.tts import speak_text
 OCR_IMAGES_FOLDER = "ocr_images"
 OCR_DEBUG_FOLDER = "ocr_debug"
 
-# Initialize reader once — model loading is slow, only pay the cost at startup
+# Initialize once — no large framework to load, just ONNX models
 _reader = None
 
 
 def _get_reader():
     global _reader
     if _reader is None:
-        _reader = easyocr.Reader(["en"], gpu=False)
+        _reader = RapidOCR()
     return _reader
 
 
@@ -42,7 +43,7 @@ def _find_default_jpg() -> str:
 
 
 def get_text_from_image(image_path: Optional[str] = None) -> str:
-    """Extract text from an image using EasyOCR."""
+    """Extract text from an image using RapidOCR."""
     if image_path is None:
         image_path = _find_default_jpg()
 
@@ -55,22 +56,24 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
         raise RuntimeError(f"Could not open image file: {image_path}")
 
     reader = _get_reader()
-    results = reader.readtext(image)
+    result, _ = reader(image)
 
-    # Filter by confidence > 0.4
-    words = [text for (_, text, conf) in results if conf > 0.4 and text.strip()]
+    if not result:
+        return ""
+
+    # result is list of [bbox, text, confidence]
+    words = [text for (_, text, conf) in result if conf > 0.4 and text.strip()]
 
     if is_test_mode():
         debug_dir = os.path.join(ROOT_DIR, OCR_DEBUG_FOLDER)
         os.makedirs(debug_dir, exist_ok=True)
-        # Draw detected text boxes on image for debugging
         debug_img = image.copy()
-        for (bbox, text, conf) in results:
-            pts = [tuple(int(c) for c in p) for p in bbox]
-            cv2.polylines(debug_img, [__import__("numpy").array(pts)], True, (0, 255, 0), 2)
-            cv2.putText(debug_img, f"{text} ({conf:.0%})", pts[0],
+        for (bbox, text, conf) in result:
+            pts = np.array(bbox, dtype=np.int32)
+            cv2.polylines(debug_img, [pts], True, (0, 255, 0), 2)
+            cv2.putText(debug_img, f"{text} ({conf:.0%})", tuple(pts[0]),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        cv2.imwrite(os.path.join(debug_dir, "easyocr_debug.jpg"), debug_img)
+        cv2.imwrite(os.path.join(debug_dir, "rapidocr_debug.jpg"), debug_img)
         print(f"Debug image saved to {debug_dir}")
 
     return " ".join(words)

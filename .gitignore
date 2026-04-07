@@ -12,6 +12,7 @@ __pycache__/
 tempCodeRunnerFile.py
 *images/
 *ocr*/
+models/
 path_to_images_folder/
 run.sh
 

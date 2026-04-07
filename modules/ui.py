@@ -14,7 +14,7 @@ def print_banner(has_gpio):
     print("  [2] Voice Assistant")
     print("  [3] Image Follow-Up Q&A")
     print("  [4] OCR (Read Text - Tesseract)")
-    print("  [5] OCR (Read Text - EasyOCR)")
+    print("  [5] OCR (Read Text - RapidOCR)")
     print("  [q] Quit (keyboard only)")
     print("\nGPIO Button Mapping:")
     print("  [A / D0 / GPIO23] -> [1] Camera")
