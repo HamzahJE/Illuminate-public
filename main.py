@@ -135,7 +135,7 @@ def image_followup():
 
 
 def ocr_read():
-    """Command 4: Capture a fresh image and extract text via OCR."""
+    """Command 4: Capture a fresh image and extract text via RapidOCR."""
     try:
         t_start = time.time()
         print(f"\n[Action] Capturing image for OCR...  [{time.strftime('%H:%M:%S')}]")
@@ -143,9 +143,9 @@ def ocr_read():
         t_captured = time.time()
         print(f"[Timestamp] Image captured    +{t_captured - t_start:.2f}s")
 
-        print(f"[Action] Running OCR...  [{time.strftime('%H:%M:%S')}]")
-        from modules.OCR import get_text_from_image
-        text = get_text_from_image(image_path)
+        print(f"[Action] Running RapidOCR...  [{time.strftime('%H:%M:%S')}]")
+        from modules import ocr
+        text = ocr.get_text_from_image(image_path)
         t_ocr = time.time()
         print(f"[Timestamp] OCR completed     +{t_ocr - t_captured:.2f}s  (total +{t_ocr - t_start:.2f}s)")
 
@@ -160,32 +160,6 @@ def ocr_read():
         speak_text("Sorry, I couldn't read text from the image.")
 
 
-def rapidocr_read():
-    """Command 5: Capture a fresh image and extract text via RapidOCR."""
-    try:
-        t_start = time.time()
-        print(f"\n[Action] Capturing image for RapidOCR...  [{time.strftime('%H:%M:%S')}]")
-        image_path = capture_image(folder_name='ocr_images')
-        t_captured = time.time()
-        print(f"[Timestamp] Image captured    +{t_captured - t_start:.2f}s")
-
-        print(f"[Action] Running RapidOCR...  [{time.strftime('%H:%M:%S')}]")
-        from modules import rapid_ocr
-        text = rapid_ocr.get_text_from_image(image_path)
-        t_ocr = time.time()
-        print(f"[Timestamp] RapidOCR completed  +{t_ocr - t_captured:.2f}s  (total +{t_ocr - t_start:.2f}s)")
-
-        if text.strip():
-            print(f"[RapidOCR] {text.strip()}")
-            speak_text(text.strip())
-        else:
-            print("[RapidOCR] No text found in image")
-            speak_text("No text was found in the image.")
-    except Exception as e:
-        print(f"[Error] RapidOCR failed: {e}")
-        speak_text("Sorry, I couldn't read text from the image.")
-
-
 def process_command(command):
     """Process a command and return True if should quit."""
     if command == '1':
@@ -196,8 +170,6 @@ def process_command(command):
         image_followup()
     elif command == '4':
         ocr_read()
-    elif command == '5':
-        rapidocr_read()
     elif command == 'q':
         return True  # Quit
     elif command:
