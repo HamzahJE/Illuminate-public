@@ -51,7 +51,28 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
         raise RuntimeError(f"Could not open image file: {image_path}")
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return pytesseract.image_to_string(gray)
+
+    # Enhance contrast to handle uneven / low lighting
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+
+    # Upscale so text is large enough for Tesseract (~30px+ per character)
+    # 640x480 webcam images need 3x to get reliable results
+    h, w = gray.shape
+    if h < 1500:
+        scale = 3 if h < 800 else 2
+        gray = cv2.resize(gray, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
+
+    # Fast denoise (Gaussian is much cheaper than bilateral on Pi)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # Adaptive threshold handles shadows and varied brightness
+    gray = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 10
+    )
+
+    custom_config = r"--oem 3 --psm 6"
+    return pytesseract.image_to_string(gray, config=custom_config)
 
 
 def speak_text_from_image(image_path: Optional[str] = None) -> str:
