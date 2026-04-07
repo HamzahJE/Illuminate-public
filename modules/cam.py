@@ -4,7 +4,7 @@ import platform
 import time
 
 IS_PI = platform.system() == 'Linux'
-WARMUP_FRAMES = 30 if IS_PI else 10
+WARMUP_FRAMES = 60 if IS_PI else 10
 
 
 def _resolve_capture_folder(folder_name: str) -> str:
