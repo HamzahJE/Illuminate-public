@@ -1,10 +1,9 @@
 import cv2
 import os
-import time
 import platform
 
-# Pi-optimized: More warmup on Pi for better auto-adjustment, less on desktop
-WARMUP_FRAMES = 30 if platform.system() == 'Linux' else 10
+IS_PI = platform.system() == 'Linux'
+WARMUP_FRAMES = 10 if IS_PI else 5
 
 
 def _resolve_capture_folder(folder_name: str) -> str:
@@ -30,10 +29,14 @@ def capture_image(folder_name='images'):
     if not cam.isOpened():
         raise RuntimeError("Cannot open camera")
 
-    time.sleep(0.1)  # Allow camera to warm up more
+    # Lock exposure and white balance to prevent oversaturation
+    if IS_PI:
+        cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)   # 1 = manual mode
+        cam.set(cv2.CAP_PROP_EXPOSURE, -4)        # negative = shorter exposure, less saturation
+        cam.set(cv2.CAP_PROP_AUTO_WB, 0)          # disable auto white balance
+        cam.set(cv2.CAP_PROP_WB_TEMPERATURE, 4500)  # neutral daylight
 
-    # Skip several frames to allow auto-adjustment
-    # Pi optimized: Use WARMUP_FRAMES (default 30 on Linux/Pi, 10 elsewhere)
+    # Fewer warmup frames needed with manual exposure
     for _ in range(WARMUP_FRAMES):
         ret, frame = cam.read()
         if not ret:
