@@ -4,6 +4,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+import wordninja
 from rapidocr_onnxruntime import RapidOCR
 
 # Ensure sibling modules can be imported when this file is executed directly.
@@ -62,7 +63,14 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
         return ""
 
     # result is list of [bbox, text, confidence]
-    words = [text for (_, text, conf) in result if float(conf) > 0.4 and text.strip()]
+    # Split joined words (e.g. "DONOT" -> "DO NOT") and filter by confidence
+    words = []
+    for (_, text, conf) in result:
+        if float(conf) > 0.4 and text.strip():
+            if ' ' not in text and len(text) > 4:
+                words.append(" ".join(wordninja.split(text)))
+            else:
+                words.append(text)
 
     if is_test_mode():
         debug_dir = os.path.join(ROOT_DIR, OCR_DEBUG_FOLDER)
