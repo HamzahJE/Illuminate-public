@@ -1,6 +1,7 @@
 import cv2
 import os
 import platform
+import time
 
 IS_PI = platform.system() == 'Linux'
 WARMUP_FRAMES = 30 if IS_PI else 10
@@ -29,6 +30,8 @@ def capture_image(folder_name='images'):
     if not cam.isOpened():
         raise RuntimeError("Cannot open camera")
 
+    time.sleep(0.05)
+    
     # Warmup: full read() needed so auto-exposure can adjust
     for _ in range(WARMUP_FRAMES):
         cam.read()
