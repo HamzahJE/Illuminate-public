@@ -1,9 +1,11 @@
 import cv2
 import os
 import platform
+import time
 
 IS_PI = platform.system() == 'Linux'
-WARMUP_FRAMES = 10 if IS_PI else 5
+SENSOR_SETTLE_SECS = 0.5 if IS_PI else 0.1
+BUFFER_FLUSH_FRAMES = 3
 
 
 def _resolve_capture_folder(folder_name: str) -> str:
@@ -36,12 +38,10 @@ def capture_image(folder_name='images'):
         cam.set(cv2.CAP_PROP_AUTO_WB, 0)          # disable auto white balance
         cam.set(cv2.CAP_PROP_WB_TEMPERATURE, 4500)  # neutral daylight
 
-    # Fewer warmup frames needed with manual exposure
-    for _ in range(WARMUP_FRAMES):
-        ret, frame = cam.read()
-        if not ret:
-            cam.release()
-            raise RuntimeError("Failed to grab frame during warm-up")
+    # Let sensor settle (exposure, white balance) then flush stale buffer frames
+    time.sleep(SENSOR_SETTLE_SECS)
+    for _ in range(BUFFER_FLUSH_FRAMES):
+        cam.grab()
 
     # Capture final frame
     ret, image = cam.read()
