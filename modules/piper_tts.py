@@ -138,10 +138,13 @@ class PiperTTS:
         started_at = None
         
         try:
-            sentences = re.split(r'(?<=[.!?,\;:;]) +', text_to_speak)
+            # Split on sentence-ending punctuation only (. ! ?)
+            # Keeps commas/semicolons intact so Piper gets full phrases
+            sentences = re.split(r'(?<=[.!?])\s+', text_to_speak)
 
             for sentence in sentences:
-                if not sentence.strip():
+                sentence = sentence.strip()
+                if not sentence:
                     continue
                 
                 for chunk in self.voice.synthesize(sentence):
