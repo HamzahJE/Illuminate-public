@@ -45,9 +45,9 @@ def capture_image(folder_name='images'):
     # Correct overexposure via gamma correction if image is too bright
     gray_check = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     mean_brightness = np.mean(gray_check)
-    if mean_brightness > 170:
+    if mean_brightness > 127:
         # Apply gamma > 1 to darken overexposed image
-        gamma = 1.0 + (mean_brightness - 170) / 85.0  # scales ~1.0–2.0
+        gamma = 1.0 + (mean_brightness - 127) / 50.0  # scales ~1.0–3.5
         lut = np.array([((i / 255.0) ** gamma) * 255
                         for i in range(256)]).astype("uint8")
         image = cv2.LUT(image, lut)
