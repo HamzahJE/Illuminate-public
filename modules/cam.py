@@ -29,9 +29,9 @@ def capture_image(folder_name='images'):
     if not cam.isOpened():
         raise RuntimeError("Cannot open camera")
 
-    # grab() is faster than read() — skips decoding, just advances the sensor
+    # Warmup: full read() needed so auto-exposure can adjust
     for _ in range(WARMUP_FRAMES):
-        cam.grab()
+        cam.read()
 
     # Capture final frame
     ret, image = cam.read()
