@@ -11,6 +11,7 @@ __pycache__/
 # Project specific
 tempCodeRunnerFile.py
 *images/
+*ocr*/
 path_to_images_folder/
 run.sh
 

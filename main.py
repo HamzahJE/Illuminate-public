@@ -160,6 +160,32 @@ def ocr_read():
         speak_text("Sorry, I couldn't read text from the image.")
 
 
+def easyocr_read():
+    """Command 5: Capture a fresh image and extract text via EasyOCR."""
+    try:
+        t_start = time.time()
+        print(f"\n[Action] Capturing image for EasyOCR...  [{time.strftime('%H:%M:%S')}]")
+        image_path = capture_image(folder_name='ocr_images')
+        t_captured = time.time()
+        print(f"[Timestamp] Image captured    +{t_captured - t_start:.2f}s")
+
+        print(f"[Action] Running EasyOCR...  [{time.strftime('%H:%M:%S')}]")
+        from modules.easy_ocr import get_text_from_image
+        text = get_text_from_image(image_path)
+        t_ocr = time.time()
+        print(f"[Timestamp] EasyOCR completed  +{t_ocr - t_captured:.2f}s  (total +{t_ocr - t_start:.2f}s)")
+
+        if text.strip():
+            print(f"[EasyOCR] {text.strip()}")
+            speak_text(text.strip())
+        else:
+            print("[EasyOCR] No text found in image")
+            speak_text("No text was found in the image.")
+    except Exception as e:
+        print(f"[Error] EasyOCR failed: {e}")
+        speak_text("Sorry, I couldn't read text from the image.")
+
+
 def process_command(command):
     """Process a command and return True if should quit."""
     if command == '1':
@@ -170,6 +196,8 @@ def process_command(command):
         image_followup()
     elif command == '4':
         ocr_read()
+    elif command == '5':
+        easyocr_read()
     elif command == 'q':
         return True  # Quit
     elif command:
