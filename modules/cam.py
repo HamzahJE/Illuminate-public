@@ -27,31 +27,15 @@ def capture_image(folder_name='images'):
             os.remove(file_path)
             
 
-    # On Pi, reduce exposure via v4l2 before opening camera
+    # On Pi, ensure auto-exposure is enabled via v4l2
     if IS_PI:
         try:
-            # Print available controls so we can see what this camera supports
-            result = subprocess.run(
-                ["v4l2-ctl", "-d", "/dev/video0", "--list-ctrls"],
-                capture_output=True, text=True, timeout=5
-            )
-            print("Camera controls:\n", result.stdout)
-
-            # Disable auto-exposure (1=manual, 3=auto on most v4l2 cameras)
             subprocess.run(
                 ["v4l2-ctl", "-d", "/dev/video0",
-                 "-c", "exposure_auto=1"],
+                 "-c", "auto_exposure=3,backlight_compensation=0"],
                 capture_output=True, timeout=5
             )
-            # Set a low exposure value
-            subprocess.run(
-                ["v4l2-ctl", "-d", "/dev/video0",
-                 "-c", "exposure_absolute=150"],
-                capture_output=True, timeout=5
-            )
-        except FileNotFoundError:
-            print("v4l2-ctl not found, skipping exposure control")
-        except subprocess.TimeoutExpired:
+        except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
     cam = cv2.VideoCapture(0)
