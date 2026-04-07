@@ -56,10 +56,10 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
         raise RuntimeError(f"Could not open image file: {image_path}")
 
     # Upscale small images so distant sign text is large enough for detection
-    # h, w = image.shape[:2]
-    # if h < 1500:
-    #     scale = 3 if h < 800 else 2
-    #     image = cv2.resize(image, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
+    h, w = image.shape[:2]
+    if h < 1500:
+        scale = 3 if h < 800 else 2
+        image = cv2.resize(image, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
 
     reader = _get_reader()
     result, _ = reader(image)
