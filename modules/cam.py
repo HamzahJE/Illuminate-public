@@ -29,13 +29,6 @@ def capture_image(folder_name='images'):
     if not cam.isOpened():
         raise RuntimeError("Cannot open camera")
 
-    # Lock exposure and white balance to prevent oversaturation
-    if IS_PI:
-        cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)   # 1 = manual mode
-        cam.set(cv2.CAP_PROP_EXPOSURE, -4)        # negative = shorter exposure, less saturation
-        cam.set(cv2.CAP_PROP_AUTO_WB, 0)          # disable auto white balance
-        cam.set(cv2.CAP_PROP_WB_TEMPERATURE, 4500)  # neutral daylight
-
     # grab() is faster than read() — skips decoding, just advances the sensor
     for _ in range(WARMUP_FRAMES):
         cam.grab()
