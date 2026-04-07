@@ -30,7 +30,7 @@ def capture_image(folder_name='images'):
     if not cam.isOpened():
         raise RuntimeError("Cannot open camera")
 
-    time.sleep(0.05)
+    time.sleep(0.1)
     
     # Warmup: full read() needed so auto-exposure can adjust
     for _ in range(WARMUP_FRAMES):
