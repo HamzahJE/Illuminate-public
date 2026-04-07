@@ -15,6 +15,11 @@ cd Illuminate
 pip install -r requirements.txt
 ```
 
+**On Raspberry Pi**, install the Pi-only extras too:
+```bash
+pip install -r requirements-pi.txt
+```
+
 ### 2. Configure API Keys
 Copy the example and fill in your Azure OpenAI credentials:
 ```bash
@@ -34,7 +39,7 @@ cp .env.example .env
 python3 main.py
 ```
 
-**Test Mode** (no API costs - recommended for testing):
+**Test Mode** (no OPENAI API costs - recommended for testing):
 ```bash
 python3 main.py --test
 ```
@@ -227,7 +232,7 @@ Press [4]
 📸 Camera captures image → ocr_images/ folder (cam.py)
    │  └─ Saved separately from normal camera captures
    ▼
-🔤 Tesseract OCR extracts text (OCR.py)
+🔤 RapidOCR extracts text + WordNinja splits joined words (modules/ocr.py)
    ▼
 🔊 Detected text spoken aloud (tts.py)
    └─ Pi: Piper TTS ──▶ USB headset
@@ -293,6 +298,17 @@ The project is **optimized for low latency** and works automatically on Pi:
 
 **Just install and run** - no manual configuration required!
 
+### Pi Camera Optimization
+
+We also considered a Raspberry Pi Camera-based capture path to reduce startup delay and shorten image capture time on Pi hardware.
+
+Why this matters:
+- Faster camera initialization than a generic USB webcam in many Pi setups
+- Lower capture latency for OCR and image-description workflows
+- More predictable performance on Raspberry Pi deployments
+
+This is a good future optimization if you want the OCR and camera flows to feel more responsive on Pi.
+
 ---
 
 ## 📦 Detailed Setup (Platform-Specific)
@@ -305,19 +321,14 @@ The project is **optimized for low latency** and works automatically on Pi:
 sudo apt update
 sudo apt install -y git python3-venv python3-pip espeak portaudio19-dev python3-dev
 
-# Tesseract OCR (for text extraction)
-sudo apt install -y libleptonica-dev libtesseract-dev tesseract-ocr
-
 # Virtual environment (recommended)
 python3 -m venv ~/myenv
 source ~/myenv/bin/activate
 
 # Python packages
 pip install -r requirements.txt
-pip install RPi.GPIO  # For GPIO button support
+pip install -r requirements-pi.txt
 
-# Piper TTS (optional - for high-quality audio, auto-detected)
-pip install piper-tts
 # Download a voice model (lightweight, runs in background):
 python3 -m piper_tts download en_US-amy-medium
 ```
@@ -411,11 +422,11 @@ Save the file and restart the program. No other changes needed!
 Shows "SOFTWARE-ONLY mode" even on Pi?
 
 ```bash
-# Install GPIO library
-pip install RPi.GPIO
+# Install Pi-only dependencies
+pip install -r requirements-pi.txt
 
 # Verify
-python3 -c "import RPi.GPIO; print('GPIO OK')"
+python3 -c "from gpiozero import Button; print('GPIO OK')"
 ```
 
 ### gpiozero "Failed to add edge detection" on Pi
@@ -497,13 +508,21 @@ EOF
 - Piper TTS (optional, for high-quality audio)
 - ir-keytable (optional, for IR remote control)
 
-**Python (installed via requirements.txt):**
+**Python (installed via requirements.txt on all platforms):**
 - openai (Azure OpenAI SDK)
 - python-dotenv
 - opencv-python
+- numpy
+- rapidocr-onnxruntime
+- wordninja
 - SpeechRecognition, pyaudio
+- sounddevice
 - pyttsx3 (macOS/Windows TTS)
-- RPi.GPIO (Raspberry Pi only — install manually)
+
+**Python (Pi-only, installed via requirements-pi.txt):**
+- gpiozero
+- rpi-lgpio
+- piper-tts
 
 **Hardware (Pi deployment):**
 - USB microphone
@@ -521,9 +540,11 @@ Illuminate/
 ├── main.py                  # Entry point, command routing, event loop
 ├── .env                     # API keys (never committed)
 ├── .env.example             # Template for .env setup
-├── requirements.txt         # Python dependencies
+├── requirements.txt         # Shared Python dependencies
+├── requirements-pi.txt       # Raspberry Pi-only dependencies
 ├── images/                  # Camera captures (auto-managed)
 ├── ocr_images/              # OCR captures (auto-managed, separate from images/)
+├── ocr_debug/               # RapidOCR debug overlays (test mode)
 ├── models/                  # Piper voice models (Pi only)
 └── modules/
     ├── cam.py               # Camera capture (OpenCV) — configurable folders
@@ -534,7 +555,7 @@ Illuminate/
     ├── piper_tts.py         # Piper TTS engine - Pi audio streaming
     ├── tones.py             # Audio feedback tones (listening start/stop)
     ├── hardware.py          # GPIO keypad input (with mock for non-Pi)
-    ├── OCR.py               # Tesseract OCR text extraction
+   ├── ocr.py               # RapidOCR text extraction + word splitting
     ├── keyboard_input.py    # Keyboard input handler
     ├── ui.py                # Terminal UI (banner, prompts)
     └── test_mode.py         # Mock responses for --test mode
@@ -545,14 +566,10 @@ Illuminate/
 ## 🔒 Security Best Practices
 
 - ✅ `.env` is in `.gitignore` - never commit it
-- ✅ `.copilotignore` and `.aidigestignore` block AI agents from accessing secrets
 - ✅ Store API keys securely in `.env` file only
 - ✅ Rotate API keys regularly
 - ✅ Use least-privilege access for API credentials
 - ⚠️ **Never share your `.env` file or commit it to version control**
-
-**AI Protection**: This project includes `.copilotignore` and `.aidigestignore` to prevent
-AI assistants from reading sensitive files containing API keys.
 
 **Senior Design Project - May 2026**
 
