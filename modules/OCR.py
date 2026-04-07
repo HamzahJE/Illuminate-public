@@ -5,6 +5,7 @@ from typing import Optional
 import platform
 
 import cv2
+import numpy as np
 import pytesseract
 
 # Set Tesseract path based on platform
@@ -17,10 +18,12 @@ ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
+from modules.test_mode import is_test_mode
 from modules.tts import speak_text
 
 
 OCR_IMAGES_FOLDER = "ocr_images"
+OCR_DEBUG_FOLDER = "ocr_debug"
 
 
 def _find_default_jpg() -> str:
@@ -56,14 +59,17 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
 
-    # Upscale so text is large enough for Tesseract (~30px+ per character)
-    # 640x480 webcam images need 3x to get reliable results
+    # 4x upscale for 640x480 — distant sign text needs ~40px+ per char
     h, w = gray.shape
     if h < 1500:
-        scale = 3 if h < 800 else 2
+        scale = 4 if h < 800 else 2
         gray = cv2.resize(gray, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
 
-    # Fast denoise (Gaussian is much cheaper than bilateral on Pi)
+    # Sharpen to restore edges blurred by upscaling
+    sharpen_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    gray = cv2.filter2D(gray, -1, sharpen_kernel)
+
+    # Light denoise without killing fine text
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
 
     # Adaptive threshold handles shadows and varied brightness
@@ -71,16 +77,28 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
         gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 10
     )
 
-    custom_config = r"--oem 3 --psm 3"
-    data = pytesseract.image_to_data(gray, config=custom_config, output_type=pytesseract.Output.DICT)
+    # Save processed images in test mode for debugging
+    if is_test_mode():
+        debug_dir = os.path.join(ROOT_DIR, OCR_DEBUG_FOLDER)
+        os.makedirs(debug_dir, exist_ok=True)
+        cv2.imwrite(os.path.join(debug_dir, "processed.jpg"), gray)
+        cv2.imwrite(os.path.join(debug_dir, "inverted.jpg"), cv2.bitwise_not(gray))
+        print(f"Debug images saved to {debug_dir}")
 
-    # Only keep words where Tesseract confidence is above 40%
-    words = [
-        data["text"][i]
-        for i in range(len(data["text"]))
-        if int(data["conf"][i]) > 40 and data["text"][i].strip()
-    ]
-    return " ".join(words)
+    # Try both normal and inverted (light text on dark signs)
+    custom_config = r"--oem 3 --psm 3"
+    results = []
+    for img in [gray, cv2.bitwise_not(gray)]:
+        data = pytesseract.image_to_data(img, config=custom_config, output_type=pytesseract.Output.DICT)
+        words = [
+            data["text"][i]
+            for i in range(len(data["text"]))
+            if int(data["conf"][i]) > 40 and data["text"][i].strip()
+        ]
+        results.append(" ".join(words))
+
+    # Return whichever pass found more text
+    return results[0] if len(results[0]) >= len(results[1]) else results[1]
 
 
 def speak_text_from_image(image_path: Optional[str] = None) -> str:
