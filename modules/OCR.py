@@ -71,7 +71,7 @@ def get_text_from_image(image_path: Optional[str] = None) -> str:
     # Split joined words (e.g. "DONOT" -> "DO NOT") and filter by confidence
     words = []
     for (_, text, conf) in result:
-        if float(conf) > 0.4 and text.strip():
+        if float(conf) > 0.2 and text.strip():
             if ' ' not in text and len(text) > 4:
                 words.append(" ".join(wordninja.split(text)))
             else:
