@@ -140,7 +140,7 @@ class PiperTTS:
         try:
             # Split on sentence-ending punctuation only (. ! ?)
             # Keeps commas/semicolons intact so Piper gets full phrases
-            sentences = re.split(r'(?<=[.!?])\s+', text_to_speak)
+            sentences = re.split(r'(?<=[,;.!?])\s+', text_to_speak)
 
             for sentence in sentences:
                 sentence = sentence.strip()
