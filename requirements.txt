@@ -7,17 +7,14 @@ python-dotenv>=1.0.0
 
 # Computer Vision
 opencv-python>=4.8.0
+numpy>=1.24.0
+rapidocr-onnxruntime>=1.4.0
+wordninja>=2.0.0
 
 # Speech Recognition and Audio
 SpeechRecognition>=3.10.0
 pyaudio>=0.2.13
+sounddevice>=0.4.6
 
 # Text-to-Speech (for macOS/Windows)
 pyttsx3>=2.90
-
-# GPIO for Raspberry Pi
-# Install manually on Pi: pip install RPi.GPIO
-# RPi.GPIO>=0.7.1
-# gpiozero>=1.7.0
-# rpi-lgpio
-# piper-tts>=1.2.0

@@ -15,7 +15,7 @@ class KeyboardInput:
         """Continuously read keyboard input."""
         while self.running:
             try:
-                choice = input("\nEnter choice [1=Camera, 2=Voice, q=Quit, 4=Unassigned]: ").strip().lower()
+                choice = input("\nEnter choice [1=Camera, 2=Voice, 3=Image Q&A, 4=OCR, q=Quit]: ").strip().lower()
                 if choice:
                     self.input_queue.put(choice)
             except (EOFError, KeyboardInterrupt):

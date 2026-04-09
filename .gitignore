@@ -10,7 +10,9 @@ __pycache__/
 
 # Project specific
 tempCodeRunnerFile.py
-images/
+*images/
+*ocr*/
+models/
 path_to_images_folder/
 run.sh
 
@@ -32,3 +34,5 @@ Thumbs.db
 
 # Audit
 AUDIT.md
+
+CLAUDE.md

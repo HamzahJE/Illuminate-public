@@ -1,0 +1,9 @@
+# Illuminate - Raspberry Pi Only Dependencies
+# Install alongside requirements.txt on Raspberry Pi
+
+# GPIO and hardware support
+gpiozero>=1.7.0
+rpi-lgpio
+
+# Pi text-to-speech backend
+piper-tts>=1.2.0
