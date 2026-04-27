@@ -573,6 +573,6 @@ Illuminate/
 **AI Protection**: This project includes `.copilotignore` and `.aidigestignore` to prevent
 AI assistants from reading sensitive files containing API keys.
 
-**Senior Design Project - May 2026**
+**Senior Design Project - April 2026**
 
 For issues: Check troubleshooting section, verify `.env` and dependencies.
