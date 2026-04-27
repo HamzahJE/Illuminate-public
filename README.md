@@ -2,7 +2,7 @@
 
 AI-powered vision assistant for visually impaired users. Uses camera, OpenAI Vision, and voice interaction with GPIO buttons or keyboard.
 
-**Senior Design Project - May 2026**
+**Senior Design Project - April 2026**
 
 ---
 
